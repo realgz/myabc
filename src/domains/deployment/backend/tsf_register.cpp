@@ -13,6 +13,8 @@
 #include <olectl.h>
 
 #include <array>
+#include <cwchar>
+#include <iterator>
 
 #include <wil/com.h>
 #include <wil/result.h>
@@ -95,23 +97,29 @@ HRESULT UnregisterCategories() {
 }
 
 bool IsProfileRegistered(std::uint16_t langid) {
-    wil::com_ptr<ITfInputProcessorProfiles> profiles;
-    if (FAILED(::CoCreateInstance(CLSID_TF_InputProcessorProfiles, nullptr, CLSCTX_INPROC_SERVER,
-                                  IID_PPV_ARGS(&profiles)))) {
+    // 权威来源是注册表：TSF 把 profile 写在
+    //   HKLM\SOFTWARE\Microsoft\CTF\TIP\{clsid}\LanguageProfile\0x{langid:08x}\{profileGuid}
+    // （ITfInputProcessorProfiles::EnumLanguageProfiles 对"刚注册"的 profile 有进程内缓存，
+    //  不可靠——见 docs/decisions/_debt-log.md 2026-09-11）。
+    wchar_t clsid_s[64] = {};
+    wchar_t prof_s[64] = {};
+    ::StringFromGUID2(CLSID_MyabcTextService, clsid_s, static_cast<int>(std::size(clsid_s)));
+    ::StringFromGUID2(GUID_MyabcProfile, prof_s, static_cast<int>(std::size(prof_s)));
+
+    wchar_t sub[256] = {};
+    ::swprintf(sub, std::size(sub),
+               L"SOFTWARE\\Microsoft\\CTF\\TIP\\%s\\LanguageProfile\\0x%08x\\%s", clsid_s,
+               static_cast<unsigned>(langid), prof_s);
+
+    HKEY key = nullptr;
+    // 64 位进程读 64 位视图即可；TSF API 注册时已同时写 WOW6432Node。
+    if (::RegOpenKeyExW(HKEY_LOCAL_MACHINE, sub, 0, KEY_READ | KEY_WOW64_64KEY, &key) !=
+        ERROR_SUCCESS) {
         return false;
     }
-    wil::com_ptr<IEnumTfLanguageProfiles> en;
-    if (FAILED(profiles->EnumLanguageProfiles(static_cast<LANGID>(langid), &en))) return false;
-
-    TF_LANGUAGEPROFILE prof{};
-    ULONG fetched = 0;
-    while (en->Next(1, &prof, &fetched) == S_OK && fetched == 1) {
-        if (::IsEqualGUID(prof.clsid, CLSID_MyabcTextService) &&
-            ::IsEqualGUID(prof.guidProfile, GUID_MyabcProfile)) {
-            return true;
-        }
-    }
-    return false;
+    const LSTATUS have_desc = ::RegQueryValueExW(key, L"Description", nullptr, nullptr, nullptr, nullptr);
+    ::RegCloseKey(key);
+    return have_desc == ERROR_SUCCESS;
 }
 
 }  // namespace myabc::deploy

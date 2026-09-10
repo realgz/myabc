@@ -57,7 +57,14 @@
 | 不变量 1（DLL 不链 libpinyin/glib/db） | PASS | `objdump -p myabc-tip.dll` 依赖仅 ole32/advapi32/kernel32 + MSVC CRT，无 libpinyin/glib/libdb |
 | `ctest`（x64 / mingw） | PASS | ipc_roundtrip 两侧绿 |
 | `tests/review/run_all.sh` | GREEN | check_structure PASS；check_hardcode 扫描 35 源文件 0 违规 |
-| M0-5/6/7/8/9/10（实机注册 + 记事本） | **待用户执行** | 见 §4 |
+| **M0-5**（实机 `--register` + `--status`） | **PASS**（2026-09-11，本机管理员会话） | 三步 [ok]，`verify: profile present`，`--register` 退 0；`--status` → registered，退 0。注册表 `HKLM\...\CTF\TIP\{clsid}`（Enable=1、LanguageProfile\0x00000804\{profileGuid} 含 Description="智能ABC (myabc)"/IconFile/IconIndex、全部 category）+ `WOW6432Node` 镜像 + `HKCR\CLSID\{clsid}\InprocServer32`(→install-x64\myabc-tip.dll, Apartment) 均正确 |
+| **M0-9**（`--unregister` + 残留检查） | **PASS** | 三步 [ok]，`verify: profile removed, InprocServer32 removed`，退 0 |
+| **M0-10**（注册表残留清零，历史回归判据） | **PASS** | unregister 后 `HKCR\CLSID\{clsid}`、`HKLM\...\CTF\TIP\{clsid}`、`WOW6432Node\...\CTF\TIP\{clsid}` 三处全部消失；re-register 幂等成功 |
+| M0-6/7/8（记事本菜单 + 上屏"啊" + 引擎 hello 日志） | **待用户执行**（GUI 交互） | 见 §4 步骤 3 |
+
+> 修复：`IsProfileRegistered` 原用 `EnumLanguageProfiles` 枚举，对"刚注册"的 profile 有进程内缓存读不到；
+> 改为直接读 `HKLM\...\CTF\TIP\{clsid}\LanguageProfile\0x{langid:08x}\{profileGuid}` 的 `Description`。
+> 见 _debt-log 2026-09-11。
 
 ## 3. 计划偏差 / 决策（登记 _debt-log 2026-09-10）
 
