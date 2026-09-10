@@ -1,0 +1,47 @@
+# myabc 配置样例 —— 复制到 %APPDATA%\myabc\config.toml 后按需修改。
+# 依据 docs/architecture/system-overview.md §5。所有键都有编译期默认值
+# （src/config/config_defaults.hpp），本文件只列可覆盖项；删掉的键用默认值。
+#
+# M0：仅 [ipc] / [engine] / langid 生效，其余键为后续里程碑预留。
+
+# zh-CN；language profile 注册用。一般不用改。
+langid = 0x0804
+
+[ipc]
+# {sid} 运行期替换为当前用户 SID。
+pipe_name_template = "\\\\.\\pipe\\myabc-engine-{sid}"
+connect_timeout_ms = 2000        # 首次连接（含拉起引擎）总超时
+request_timeout_ms = 50          # 单次按键请求超时，超时降级不阻塞宿主
+connect_backoff_ms = [50, 100, 200, 400]
+
+[engine]
+# 相对 TIP DLL 所在目录；留空即同目录 myabc-engine.exe。
+exe_path = "myabc-engine.exe"
+model_dir = "data"                       # libpinyin 系统词库/模型目录（相对安装目录）
+user_data_dir = "{appdata}/myabc/userdata"
+idle_exit_minutes = 10                   # 引擎空闲自退出
+
+# --- 以下为后续里程碑预留，M0 未接线 ---------------------------------
+# [candidates]
+# page_size = 9
+# page_prev_keys = ["-", ","]
+# page_next_keys = ["=", "."]
+# select_keys = "123456789"
+#
+# [input]
+# scheme = "quanpin"       # quanpin/jianpin/hunpin
+# fuzzy = []
+# bihuo_enabled = true
+# number_lead_key = "i"
+#
+# [output]
+# charset = "gbk"          # gb2312/gbk/unicode
+#
+# [ui]
+# font = "Microsoft YaHei UI"
+# font_size_pt = 12
+# follow_caret = true
+#
+# [learning]
+# enabled = true
+# min_uses_to_promote = 2

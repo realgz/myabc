@@ -75,3 +75,10 @@ foreach(_d IN LISTS _domains)
         message(STATUS "  (跳过未落地的领域目录 ${_d})")
     endif()
 endforeach()
+
+# --- 单元测试（默认开；打包构建可 -DMYABC_BUILD_TESTS=OFF）------------------
+option(MYABC_BUILD_TESTS "构建 tests/unit 下的单元测试" ON)
+if(MYABC_BUILD_TESTS AND EXISTS "${CMAKE_SOURCE_DIR}/tests/unit/CMakeLists.txt")
+    enable_testing()
+    add_subdirectory(tests/unit)
+endif()
