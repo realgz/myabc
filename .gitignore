@@ -1,0 +1,15 @@
+tmp/
+.ag_state/
+*.env
+*.key
+build/
+out/
+
+# libpinyin：按 project 决策（docs/decisions/_debt-log.md 2026-09-09）为普通 clone，
+# 非 submodule。由 scripts/setup-deps.ps1 克隆 + checkout 锁定版 + 应用
+# patches/libpinyin-win32-shared-build.patch 复现，不纳入版本控制。
+third_party/libpinyin/
+.vs/
+vcpkg_installed/
+*.user
+CMakeUserPresets.json

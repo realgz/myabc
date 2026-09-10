@@ -1,0 +1,11 @@
+{
+  "$comment": "SPDX-License-Identifier: GPL-3.0-or-later --- myabc MSVC 侧依赖清单（manifest 模式）。依据 docs/plan/00-toolchain-and-build-plan.md §3.2。仅列纯技术/Win32 库，禁止加入 glib/libpinyin/gtk（见 §7 不改动清单 + system-overview §7 不变量 1）。builtin-baseline = third_party/vcpkg 当前 submodule commit。",
+  "name": "myabc",
+  "version-string": "0.0.0-m0",
+  "description": "Smart-ABC-style Chinese IME for Windows (TSF TIP). MSVC-side dependency manifest.",
+  "homepage": "https://github.com/az/myabc",
+  "builtin-baseline": "f781d9387e4684783e69e136e2e124ff4660bffc",
+  "dependencies": [
+    "wil"
+  ]
+}

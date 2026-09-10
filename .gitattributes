@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# 规范行尾，避免 core.autocrlf 破坏在 MSYS bash 下执行的脚本。
+
+*            text=auto
+
+# 必须 LF：MSYS/UCRT64 bash 执行的脚本、CMake 片段
+*.sh         text eol=lf
+*.cmake      text eol=lf
+CMakeLists.txt text eol=lf
+
+# Windows PowerShell 5.1 脚本：CRLF；含中文的脚本另存 UTF-8 with BOM（git 原样保留 BOM 字节）
+*.ps1        text eol=crlf
+
+# 二进制/资源
+*.ico        binary
+*.png        binary
+*.patch      -text

@@ -1,0 +1,43 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index c04f10c..70a9a98 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -97,8 +97,14 @@ endif (NOT HAVE_BERKELEY_DB)
+ ######## Windows
+ 
+ if (WIN32)
+-    set(CMAKE_SHARED_LIBRARY_PREFIX ${CMAKE_INSTALL_PREFIX})
+-    set(CMAKE_STATIC_LIBRARY_PREFIX ${CMAKE_INSTALL_PREFIX})
++    # myabc patch (M0 R1): upstream forced the library file prefix to
++    # CMAKE_INSTALL_PREFIX. On Windows that default is an absolute path with a
++    # drive letter and spaces ("C:/Program Files/libpinyin"), which Ninja cannot
++    # use as an output path ("src/C:/Program Files/..."), breaking the build.
++    # Keep CMake's default lib/dll prefixes and instead auto-export all symbols
++    # so the shared libpinyin.dll ships a usable import library.
++    # See docs/decisions/_debt-log.md + patches/libpinyin-win32-shared-build.patch.
++    set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
+ endif (WIN32)
+ 
+ ######## Directory
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index f48a9b3..4ce1f49 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -30,6 +30,17 @@ set_target_properties(
+             13
+ )
+ 
++# myabc patch (M0 R1): on Windows a PE DLL must resolve every symbol at link
++# time. Upstream only appends ${DB_LIBRARIES} to CMAKE_CXX_LINK_EXECUTABLE (for
++# utils) and relies on ELF shared libs allowing undefined symbols, so the
++# shared libpinyin.dll link fails with "undefined reference to db_create".
++# storage/CMakeLists.txt also references the misspelled ${BERKELEY_DB_LIBRARIES}.
++# Link glib + Berkeley DB into the shared library explicitly.
++# See docs/decisions/_debt-log.md + patches/libpinyin-win32-shared-build.patch.
++if (WIN32)
++    target_link_libraries(pinyin ${GLIB2_LIBRARIES} ${DB_LIBRARIES})
++endif (WIN32)
++
+ install(
+     TARGETS
+         pinyin
