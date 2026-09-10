@@ -9,6 +9,12 @@
 
 include_guard(GLOBAL)
 
+# --- 产物集中输出（便于 scripts/stage.ps1 收集）----------------------------
+# 所有可执行文件 / DLL / 导入库落到 <binaryDir>/bin，静态库落 <binaryDir>/lib。
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin" CACHE PATH "")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin" CACHE PATH "")
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib" CACHE PATH "")
+
 # --- C++ 标准（system-overview：C++20）--------------------------------------
 set(CMAKE_CXX_STANDARD 20 CACHE STRING "")
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

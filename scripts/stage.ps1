@@ -12,12 +12,17 @@
 [CmdletBinding()]
 param(
     [string]$Config = 'RelWithDebInfo',
-    [ValidateSet('x64', 'x86')]
-    [string[]]$Arch = @('x64', 'x86')
+    [string[]]$Arch = @('x64', 'x86')   # -Arch x64,x86
 )
 
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\env.ps1"
+
+# 归一：把可能的 "x64,x86" 单串拆开，去空。
+$Arch = @($Arch | ForEach-Object { $_ -split '[,\s]+' } | Where-Object { $_ })
+foreach ($a in $Arch) {
+    if (@('x64', 'x86') -notcontains $a) { throw "未知架构 '$a'（仅 x64 | x86）。" }
+}
 
 $outDir = Join-Path $MyabcRepoRoot "out\$Config"
 $engineOut = Join-Path $outDir 'engine'
@@ -35,7 +40,7 @@ function Copy-IfExists([string]$src, [string]$dst) {
 # --- MSVC 侧：TIP DLL（按架构分子目录）、deployer ------------------------
 foreach ($a in $Arch) {
     $preset = if ($a -eq 'x86') { 'x86-release' } elseif ($Config -eq 'Debug') { 'x64-debug' } else { 'x64-release' }
-    $msvcBin = Join-Path $MyabcRepoRoot "build\msvc\$preset"
+    $msvcBin = Join-Path $MyabcRepoRoot "build\msvc\$preset\bin"
     $archDir = Join-Path $outDir $a
     New-Item -ItemType Directory -Force -Path $archDir | Out-Null
 
@@ -46,7 +51,7 @@ foreach ($a in $Arch) {
 }
 
 # --- 引擎侧：myabc-engine.exe + libpinyin.dll + MinGW 运行时 -------------
-$mingwBin = Join-Path $MyabcRepoRoot 'build\mingw\engine'
+$mingwBin = Join-Path $MyabcRepoRoot 'build\mingw\engine\bin'
 $lpBin = Join-Path $MyabcLibpinyinDir 'build\src'
 Write-Host "[engine] <- build\mingw\engine + libpinyin" -ForegroundColor Cyan
 Copy-IfExists (Join-Path $mingwBin 'myabc-engine.exe') $engineOut

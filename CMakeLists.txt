@@ -54,10 +54,12 @@ endforeach()
 # --- 按侧分派领域子目录 -------------------------------------------------
 if(MYABC_TOOLCHAIN STREQUAL "msvc")
     find_package(wil CONFIG REQUIRED)   # B5：验证 vcpkg manifest 拉起 wil
+    # 顺序有意义：tsf-service 链接 deployment 的 myabc::deploy-core，
+    # candidate-ui M1 才有。
     set(_domains
+        src/domains/deployment
         src/domains/tsf-service
         src/domains/candidate-ui
-        src/domains/deployment
     )
 elseif(MYABC_TOOLCHAIN STREQUAL "mingw")
     set(_domains

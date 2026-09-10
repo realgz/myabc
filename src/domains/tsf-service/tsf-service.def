@@ -1,0 +1,9 @@
+; SPDX-License-Identifier: GPL-3.0-or-later
+; myabc-tip.dll 导出 —— TSF TIP 的 COM 自注册入口
+; 依据：docs/plan/01-m0-tsf-skeleton-plan.md §3.3
+LIBRARY     myabc-tip
+EXPORTS
+    DllGetClassObject       PRIVATE
+    DllCanUnloadNow         PRIVATE
+    DllRegisterServer       PRIVATE
+    DllUnregisterServer     PRIVATE

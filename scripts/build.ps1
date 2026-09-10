@@ -14,8 +14,8 @@
 
 [CmdletBinding()]
 param(
-    [ValidateSet('x64', 'x86')]
-    [string[]]$Arch = @('x64'),
+    # 逗号分隔，如 -Arch x64,x86；-File 模式下也接受单串 "x64,x86"。
+    [string]$Arch = 'x64',
 
     [ValidateSet('Debug', 'Release')]
     [string]$Config = 'Release',
@@ -29,6 +29,11 @@ $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\env.ps1"
 
 $env:VCPKG_ROOT = $MyabcVcpkgRoot
+
+$archList = @($Arch -split '[,\s]+' | Where-Object { $_ })
+foreach ($a in $archList) {
+    if ($a -notin @('x64', 'x86')) { throw "未知架构 '$a'（仅 x64 | x86）。" }
+}
 
 # Config -> preset 名（x86 只有 release 预设；Debug 仅 x64）。
 function Resolve-Preset([string]$arch, [string]$config) {
@@ -45,7 +50,7 @@ function Resolve-VcArch([string]$arch) {
     if ($arch -eq 'x86') { return 'x86' } else { return 'x64' }
 }
 
-foreach ($a in $Arch) {
+foreach ($a in $archList) {
     $preset = Resolve-Preset $a $Config
     $vcArch = Resolve-VcArch $a
     $binDir = Join-Path $MyabcRepoRoot "build\msvc\$preset"

@@ -17,6 +17,10 @@
 
 namespace myabc::config {
 
+// zh-CN。language profile 注册用。集中定义一次，其它域引用此常量而非裸写。
+// DECISION: docs/architecture/system-overview.md §5（langid 键）。
+inline constexpr std::uint16_t kDefaultLangId = 0x0804;
+
 struct IpcConfig {
     // {sid} 占位符由 config_loader 在运行期替换为当前用户 SID。
     std::string pipe_name_template = R"(\\.\pipe\myabc-engine-{sid})";
@@ -38,8 +42,7 @@ struct Config {
     IpcConfig ipc;
     EngineConfig engine;
 
-    // zh-CN，注册 language profile 用。DECISION: system-overview §5（langid 键）。
-    std::uint16_t langid = 0x0804;
+    std::uint16_t langid = kDefaultLangId;
 };
 
 // 编译期默认值集合（值语义，调用方可拷贝后改）。
