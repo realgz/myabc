@@ -22,6 +22,7 @@
 #include <memory>
 #include <unordered_map>
 
+#include "bihuoma_table.hpp"
 #include "candidate/source_registry.hpp"
 #include "json_codec.hpp"
 #include "libpinyin_wrapper.hpp"
@@ -64,7 +65,8 @@ private:
     void MaybePushToUi(std::uint32_t session_id, const SessionResult& r);
 
     LibPinyinEngine& engine_;
-    SourceRegistry registry_;
+    BihuoTable bihuo_table_;   // registry_ 持有它的引用；先于 registry_ 内容确定而声明
+    SourceRegistry registry_;  // 默认空构造，真正内容在构造函数体里赋值（见 .cpp 说明）
     SessionManager sessions_;
     UiBridge* ui_bridge_;
     bool should_shutdown_ = false;

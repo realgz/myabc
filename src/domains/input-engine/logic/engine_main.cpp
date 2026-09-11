@@ -97,6 +97,11 @@ myabc::engine::SessionOptions ToSessionOptions(const myabc::config::Config& cfg)
     opts.page_prev_keys = cfg.candidates.page_prev_keys;
     opts.page_next_keys = cfg.candidates.page_next_keys;
     opts.select_keys = cfg.candidates.select_keys;
+    if (!cfg.input.number_lead_key.empty()) opts.number_lead_key = cfg.input.number_lead_key[0];
+    opts.bihuo_enabled = cfg.input.bihuo_enabled;
+    // 相对安装目录（assets/data/bihuoma.txt 随包分发）；文件不存在时 BihuoTable 静默
+    // 留空，过滤退化成空操作，不影响其它候选（见 backend/bihuoma_table.hpp DECISION）。
+    opts.bihuo_data_path = SelfDir() + "\\data\\bihuoma.txt";
     return opts;
 }
 

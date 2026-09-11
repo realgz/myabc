@@ -30,6 +30,14 @@ struct SessionOptions {
     std::string page_next_keys = "=.";   // 任一字符触发下一页（中文模式无逗号/句号歧义，
                                          // 因为标点已被 PunctuationSource 在"非组字态"拦下）
     std::string select_keys = "123456789";
+    // M4：借道 SessionOptions 这个"配置包"把 Dispatcher 构造 SourceRegistry 需要的配置
+    // 传下去（不是 Session 自己的行为，见 dispatcher.cpp）。
+    char number_lead_key = 'i';
+    bool bihuo_enabled = true;
+    std::string bihuo_data_path;   // 空 = 不加载任何笔形数据（表为空，等价功能关闭但安全）
+    // 笔形辅助码触发键（默认反引号）。Session 自己也要用它：组字态下识别"该把这个数字
+    // 追加进 raw_ 当笔形码，而不是当 select_keys 选字"，见 session.cpp DECISION。
+    char bihuo_lead_key = '`';
 };
 
 struct CandidateView {

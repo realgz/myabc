@@ -21,6 +21,8 @@ add_library(myabc-engine-core STATIC
     logic/candidate/pinyin_candidate_source.cpp
     logic/candidate/english_passthrough_source.cpp
     logic/candidate/punctuation_source.cpp
+    logic/candidate/number_currency_source.cpp
+    logic/candidate/bihuo_filter.cpp
     logic/candidate/source_registry.cpp
     logic/charset/charset_filter.cpp
     logic/session/session.cpp
@@ -30,6 +32,7 @@ add_library(myabc-engine-core STATIC
     backend/libpinyin_wrapper.cpp
     backend/ui_bridge.cpp
     backend/crash_guard.cpp
+    backend/bihuoma_table.cpp
 )
 add_library(myabc::engine-core ALIAS myabc-engine-core)
 
@@ -41,6 +44,7 @@ target_include_directories(myabc-engine-core PUBLIC
 target_link_libraries(myabc-engine-core PUBLIC
     myabc::ipc
     myabc::config
+    myabc::cn-number
     LibPinyin::LibPinyin
     PkgConfig::GLIB2
 )

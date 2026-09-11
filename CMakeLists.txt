@@ -45,7 +45,7 @@ message(STATUS "myabc: 构建侧 = ${MYABC_TOOLCHAIN}")
 
 # --- 公共层：IPC 协议 + 配置（两侧都编）----------------------------------
 # 子目录仅在其 CMakeLists.txt 存在时加入，便于分步落地（plan 01 §3.1-3.2）。
-foreach(_common IN ITEMS src/config src/shared/ipc-protocol)
+foreach(_common IN ITEMS src/config src/shared/ipc-protocol src/shared/cn-number)
     if(EXISTS "${CMAKE_SOURCE_DIR}/${_common}/CMakeLists.txt")
         add_subdirectory(${_common})
     endif()

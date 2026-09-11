@@ -73,6 +73,12 @@ if (Test-Path (Join-Path $lpDataDir 'table.conf')) {
     Write-Warning "  缺词库数据：$lpDataDir（先跑 scripts\build-engine.sh 或手动生成 build-data）"
 }
 
+# 笔形辅助码种子表（M4，见 docs/plan/05-m4-bihuo-numbers-gbk-plan.md §3.1）：
+# engine_main.cpp 里 bihuo_data_path = SelfDir() + "\data\bihuoma.txt"，与词库数据同目录。
+$dataOut = Join-Path $engineOut 'data'
+New-Item -ItemType Directory -Force -Path $dataOut | Out-Null
+Copy-IfExists (Join-Path $MyabcRepoRoot 'assets\data\bihuoma.txt') $dataOut
+
 # 用 ldd 收集 libpinyin.dll 依赖的 /ucrt64/bin DLL（排除系统 DLL）。
 if (Test-Path (Join-Path $lpBin 'libpinyin.dll')) {
     $env:MSYSTEM = 'UCRT64'

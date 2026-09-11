@@ -43,6 +43,37 @@ SessionResult Session::ProcessKey(int vk, unsigned ch) {
         if (vk == VK_ESCAPE) return CancelComposition();
         if (vk == VK_SPACE) return SelectCandidate(0);
 
+        // M4：一旦 raw_ 以 number_lead_key 开头（如 "i"），数字/小数点/负号必须能
+        // 继续拼数字本身（"i2025" 的 '2'..'5'），不能被 select_keys（"123456789"）
+        // 截胡当成选字——数字模式下只能用空格选候选[0]或 Esc 取消，见
+        // docs/decisions/_debt-log.md 2026-09-11。
+        const bool in_number_mode = !raw_.empty() && raw_.front() == opts_.number_lead_key;
+        if (in_number_mode && ch != 0) {
+            const char c = static_cast<char>(ch);
+            if ((c >= '0' && c <= '9') || c == '.' || c == '-') {
+                raw_ += c;
+                return Recompute();
+            }
+        }
+
+        // M4：笔形辅助码（DECISION: docs/decisions/_debt-log.md 2026-09-11「笔形辅助码
+        // 触发键」）。拼音后直接接数字（"wo3"）跟 select_keys（默认全体数字，M1 起的
+        // 既有行为）无法共存，因此用独立触发键 bihuo_lead_key（默认反引号）：按一次
+        // 进入笔形输入态（"wo" -> "wo`"），之后 1-5 才追加为笔形码本身，不再落入
+        // select_keys/letter 分支。不在数字模式下才生效——数字模式的数字另有含义。
+        if (!in_number_mode && opts_.bihuo_enabled && ch != 0) {
+            const char c = static_cast<char>(ch);
+            const bool in_bihuo_mode = raw_.find(opts_.bihuo_lead_key) != std::string::npos;
+            if (in_bihuo_mode && c >= '1' && c <= '5') {
+                raw_ += c;
+                return Recompute();
+            }
+            if (!in_bihuo_mode && c == opts_.bihuo_lead_key) {
+                raw_ += c;
+                return Recompute();
+            }
+        }
+
         if (ch != 0) {
             const char c = static_cast<char>(ch);
             if (opts_.select_keys.find(c) != std::string::npos) {

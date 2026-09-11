@@ -21,9 +21,15 @@ std::uint32_t SessionIdOf(const Json& params) {
 
 Dispatcher::Dispatcher(LibPinyinEngine& engine, SessionOptions opts, UiBridge* ui_bridge)
     : engine_(engine),
-      registry_(BuildDefaultSourceRegistry(engine)),
-      sessions_(engine, registry_, std::move(opts)),
-      ui_bridge_(ui_bridge) {}
+      sessions_(engine, registry_, opts),   // 绑定 registry_ 的引用；内容随后在函数体里填
+      ui_bridge_(ui_bridge) {
+    // bihuo_table_ 必须先加载好，registry_ 里的 PinyinCandidateSource 才拿到正确数据；
+    // registry_ 是默认空构造的，这里赋值真正内容——sessions_ 持有的是 registry_ 这个
+    // 对象的引用（不是内容快照），赋值后 sessions_ 看到的就是新内容。
+    if (!opts.bihuo_data_path.empty()) bihuo_table_.LoadFromFile(opts.bihuo_data_path);
+    registry_ = BuildDefaultSourceRegistry(engine, bihuo_table_, opts.bihuo_enabled,
+                                           opts.bihuo_lead_key, opts.number_lead_key);
+}
 
 Response Dispatcher::Handle(const Request& req) {
     switch (req.method) {
