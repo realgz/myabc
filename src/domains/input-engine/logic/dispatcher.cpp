@@ -143,11 +143,16 @@ Response Dispatcher::HandleSetCaretRect(const Request& req) {
         // DECISION（真机反馈"候选框偶尔出现在左上角"，见 docs/decisions/_debt-log.md
         // 2026-09-11）：根因是 TIP 侧 ITfContextView::GetTextExt 偶尔在组字刚开始、
         // 宿主布局还没稳定时失败或给出退化矩形，composition.cpp 没检查 HRESULT，
-        // 于是把零初始化的 RECT{}（即 x=y=w=h=0）原样发过来。收到这种明显无效的矩形
-        // 时不推 uiShow——宁可候选窗这一帧维持原样（通常是隐藏），也不要跳到屏幕
-        // 左上角；下一次按键 TIP 会重新算一次 GetTextExt，多数情况下立刻就好了
-        // （用户实测反馈正是"一开始在左上角，后来就正常了"这个自愈模式）。
-        if (rect.w > 0 && rect.h > 0) {
+        // 于是把零初始化的 RECT{}（即 x=y=w=h 全部为 0）原样发过来。
+        // 2026-09-12 修正（真机反馈"候选词不更新，但空格能正确上屏"——上一版判据
+        // `w>0 && h>0` 太严格了：文本插入点（光标）天然是一条竖线，很多宿主对着一个
+        // "空选区"（纯插入点，不是选中一段文字）调 GetTextExt 会合法地返回 w=0（没有
+        // 宽度，只有高度/位置），这是每次按键后的常态，不是错误——旧判据把这些完全
+        // 正常的后续帧全部当"退化"吞掉，候选窗停在第一帧的内容不再刷新，但引擎内部
+        // 状态（raw_/candidates_）其实一直在正确推进，所以空格/上屏用的是最新状态，
+        // candidates_UI 显示的却是旧的。只有 x/y/w/h 四个全是 0（GetTextExt 真正失败、
+        // RECT{} 从没被写过的信号）才算退化——单独 w==0（或 h==0）都可能是合法插入点。
+        if (!(rect.x == 0 && rect.y == 0 && rect.w == 0 && rect.h == 0)) {
             std::vector<CandidateItem> items;
             items.reserve(it->second.candidates.size());
             for (const auto& c : it->second.candidates) items.push_back(CandidateItem{c.text, false});

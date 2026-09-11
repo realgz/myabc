@@ -14,7 +14,7 @@
 
 #define MyAppName "myabc"
 #define MyAppNameFull "智能ABC (myabc)"
-#define MyAppVersion "0.1.2"
+#define MyAppVersion "0.1.3"
 #define MyAppPublisher "myabc project"
 #define MyAppURL "https://github.com/realgz/myabc"
 #define SrcDir "..\out\Release\install-x64"
