@@ -34,6 +34,14 @@
 | M0 已验收的注册/记事本基本上屏 | 未回归（结构性保证） | DLL 换新后重新拷到 `install-x64/`；`myabc-deployer --status` 仍报 registered，无需重新注册（InprocServer32 路径不变） |
 | M1-3 ~ M1-13（记事本交互） | **待用户执行** | 见 §3 |
 
+> **实机前发现并修复一个隐蔽 bug**：`IpcClient::LaunchEngine` 原来没给子进程设工作目录，
+> 导致 `myabc-engine.exe` 用宿主（notepad.exe）的 CWD 解析相对路径的 `model_dir`，
+> 几乎总是找不到词库——现象是 IPC 一切正常但 `pinyinReady:false`，候选永远是空。
+> 已修（`lpCurrentDirectory` 显式设成 engine.exe 所在目录）；配套修了 `stage.ps1`
+> （原来没拷词库数据到 `out/.../engine/data/`）和 `build-engine.sh`（补 build-data 步骤）。
+> 修复后从 `install-x64/` 直接跑 engine 验证 `pinyinReady:true` 且 `nihao`+空格正确
+> commit "你好"。详见 debt-log。
+
 ## 3. 待用户在真机验证的场景（TIP DLL 已更新到 `out\Release\install-x64\myabc-tip.dll`）
 
 > 前置：已加载旧版 `myabc-tip.dll` 的进程（本次实测环境里是一个记事本 + WindTerm）需要

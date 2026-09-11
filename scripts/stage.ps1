@@ -50,12 +50,25 @@ foreach ($a in $Arch) {
     Copy-IfExists (Join-Path $msvcBin 'myabc-deployer.exe') $archDir
 }
 
-# --- 引擎侧：myabc-engine.exe + libpinyin.dll + MinGW 运行时 -------------
+# --- 引擎侧：myabc-engine.exe + libpinyin.dll + 词库数据 + MinGW 运行时 --
 $mingwBin = Join-Path $MyabcRepoRoot 'build\mingw\engine\bin'
 $lpBin = Join-Path $MyabcLibpinyinDir 'build\src'
+$lpDataDir = Join-Path $MyabcLibpinyinDir 'build-data\data'
 Write-Host "[engine] <- build\mingw\engine + libpinyin" -ForegroundColor Cyan
 Copy-IfExists (Join-Path $mingwBin 'myabc-engine.exe') $engineOut
 Copy-IfExists (Join-Path $lpBin 'libpinyin.dll') $engineOut
+
+# 词库/模型二进制（M1 R1，见 cmake/FindLibPinyin.cmake 的 LibPinyin_DATA_DIR）：
+# config.engine.model_dir 默认 "data"，相对 myabc-engine.exe 所在目录解析。
+if (Test-Path (Join-Path $lpDataDir 'table.conf')) {
+    $dataOut = Join-Path $engineOut 'data'
+    New-Item -ItemType Directory -Force -Path $dataOut | Out-Null
+    Get-ChildItem (Join-Path $lpDataDir '*.bin'), (Join-Path $lpDataDir '*.db'),
+                  (Join-Path $lpDataDir 'table.conf') -ErrorAction SilentlyContinue |
+        ForEach-Object { Copy-IfExists $_.FullName $dataOut }
+} else {
+    Write-Warning "  缺词库数据：$lpDataDir（先跑 scripts\build-engine.sh 或手动生成 build-data）"
+}
 
 # 用 ldd 收集 libpinyin.dll 依赖的 /ucrt64/bin DLL（排除系统 DLL）。
 if (Test-Path (Join-Path $lpBin 'libpinyin.dll')) {

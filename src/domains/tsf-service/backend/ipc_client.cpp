@@ -40,12 +40,20 @@ bool IpcClient::TryOpenPipe() {
 bool IpcClient::LaunchEngine() {
     if (cfg_.engine_exe_path.empty()) return false;
 
+    // 工作目录必须是引擎所在目录，否则它按相对路径找的 model_dir/user_dir
+    // （config engine.model_dir 默认 "data"）会相对宿主进程（如 notepad.exe）的 CWD
+    // 解析，几乎总是找不到——engine_exe_path 已是绝对路径（见 SelfDir() 拼接）。
+    const auto slash = cfg_.engine_exe_path.find_last_of(L"\\/");
+    const std::wstring engine_dir =
+        slash == std::wstring::npos ? L"." : cfg_.engine_exe_path.substr(0, slash);
+
     std::wstring cmd = L"\"" + cfg_.engine_exe_path + L"\"";
     STARTUPINFOW si{};
     si.cb = sizeof(si);
     PROCESS_INFORMATION pi{};
-    const BOOL ok = ::CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, FALSE,
-                                     CREATE_NO_WINDOW | DETACHED_PROCESS, nullptr, nullptr, &si, &pi);
+    const BOOL ok =
+        ::CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, FALSE,
+                        CREATE_NO_WINDOW | DETACHED_PROCESS, nullptr, engine_dir.c_str(), &si, &pi);
     if (!ok) return false;
     ::CloseHandle(pi.hThread);
     ::CloseHandle(pi.hProcess);

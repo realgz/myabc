@@ -5,9 +5,15 @@
 #
 # 依据：docs/plan/00-toolchain-and-build-plan.md §3.4 / §4.1
 #       docs/plan/01-m0-tsf-skeleton-plan.md §5（M0-2）
+#       docs/plan/02-m1-libpinyin-quanpin-plan.md（词库数据生成，M1 R1）
 #
 # 运行方式（必须在 UCRT64 shell，即 C:\msys64\ucrt64.exe，或设 MSYSTEM=UCRT64）：
 #   /e/work/myabc/scripts/build-engine.sh [--clean] [--libpinyin-only]
+#
+# 产出两套独立 build（原因见 docs/decisions/_debt-log.md 2026-09-11 "词库二进制生成
+# 流水线"）：
+#   third_party/libpinyin/build       —— 共享库，myabc-engine.exe 运行时链接
+#   third_party/libpinyin/build-data  —— 静态库 + utils，只用来跑 data 目标生成词库
 
 set -euo pipefail
 
@@ -55,8 +61,22 @@ fi
 
 ldd "${lp_build}/src/libpinyin.dll" | awk '{print $1}' | sort -u | sed 's/^/  dep: /'
 
+# --- 1b. 词库/模型二进制数据（独立静态 build，避免与共享库的 utils 链接冲突）------
+lp_build_data="${libpinyin_dir}/build-data"
+if [[ "$clean" == "1" ]]; then rm -rf "$lp_build_data"; fi
+
+if [[ ! -f "${lp_build_data}/data/table.conf" ]]; then
+    echo "=== 生成 libpinyin 词库二进制（静态 build，下载 model20.text.tar.gz ~20MB）==="
+    cmake -S "$libpinyin_dir" -B "$lp_build_data" -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF -DBUILD_UTILS=ON
+    cmake --build "$lp_build_data" -j
+else
+    echo "词库数据已存在（${lp_build_data}/data/table.conf），跳过（--clean 强制重建）。"
+fi
+
 if [[ "$libpinyin_only" == "1" ]]; then
-    echo "仅 libpinyin 完成。"
+    echo "仅 libpinyin（含词库数据）完成。"
     exit 0
 fi
 
