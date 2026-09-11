@@ -60,12 +60,20 @@ struct OutputConfig {
     std::string charset = "gbk";
 };
 
+// 候选窗渲染最小必需项（M1：GDI 渲染，见 candidate-ui 域的 DECISION 注释）。
+// 颜色/主题/跟随光标等留到换 D2D 渲染时再加，避免为用不上的字段先建模。
+struct UiConfig {
+    std::string font = "Microsoft YaHei UI";
+    unsigned font_size_pt = 12;
+};
+
 struct Config {
     IpcConfig ipc;
     EngineConfig engine;
     CandidatesConfig candidates;
     InputConfig input;
     OutputConfig output;
+    UiConfig ui;
 
     std::uint16_t langid = kDefaultLangId;
 };

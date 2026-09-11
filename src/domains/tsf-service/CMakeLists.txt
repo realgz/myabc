@@ -18,9 +18,13 @@ add_library(myabc-tip SHARED
     backend/class_factory.cpp
     backend/myabc_text_service.cpp
     backend/edit_session.cpp
+    backend/composition.cpp
     backend/ipc_client.cpp
     backend/dll_refcount.cpp
+    backend/text_convert.cpp
     logic/key_router.cpp
+    logic/mode_manager.cpp
+    logic/composition_state.cpp
     "${CMAKE_CURRENT_SOURCE_DIR}/tsf-service.def"
 )
 
@@ -34,6 +38,7 @@ target_link_libraries(myabc-tip PRIVATE
     myabc::config
     myabc::guids
     myabc::deploy-core  # DllRegisterServer 复用 TSF/COM 注册逻辑
+    myabc::candidate-ui
     WIL::WIL
     ole32 oleaut32 uuid advapi32   # TSF 是 COM，无 msctf.lib；CLSID/IID 来自 uuid.lib
 )

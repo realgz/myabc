@@ -2,6 +2,7 @@
 //
 // src/domains/tsf-service/backend/myabc_text_service.cpp
 // 依据：docs/plan/01-m0-tsf-skeleton-plan.md §3.3
+//       docs/plan/02-m1-libpinyin-quanpin-plan.md §3.5
 //
 // 参考微软 SampleIME（MIT）：SampleIME.cpp 的 Activate/Deactivate、KeyEventSink.cpp 的
 // _InitKeyEventSink / OnKeyDown 结构。DECISION: docs/decisions/_debt-log.md（来源登记）。
@@ -10,14 +11,17 @@
 
 #include <sddl.h>
 
+#include <cwctype>
 #include <string>
 
 #include <wil/com.h>
 
+#include "composition_state.hpp"
 #include "config_loader.hpp"
 #include "dll_refcount.hpp"
 #include "edit_session.hpp"
 #include "guids.hpp"
+#include "text_convert.hpp"
 
 namespace myabc::tsf {
 
@@ -46,22 +50,10 @@ std::string AppDataDir() {
     size_t n = 0;
     std::string out = ".";
     if (_wdupenv_s(&p, &n, L"APPDATA") == 0 && p) {
-        const int len = ::WideCharToMultiByte(CP_UTF8, 0, p, -1, nullptr, 0, nullptr, nullptr);
-        if (len > 0) {
-            out.assign(static_cast<std::size_t>(len - 1), '\0');
-            ::WideCharToMultiByte(CP_UTF8, 0, p, -1, out.data(), len, nullptr, nullptr);
-        }
+        out = Narrow(p);
         free(p);
     }
     return out;
-}
-
-std::wstring Widen(const std::string& s) {
-    if (s.empty()) return {};
-    const int n = ::MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), nullptr, 0);
-    std::wstring w(static_cast<std::size_t>(n), L'\0');
-    ::MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), w.data(), n);
-    return w;
 }
 
 std::wstring SelfDir() {
@@ -73,9 +65,19 @@ std::wstring SelfDir() {
     return slash == std::wstring::npos ? L"." : p.substr(0, slash);
 }
 
+// vk/lParam -> 键盘布局下的可打印字符（不含 Ctrl/Alt 组合、死键合成，够 M1 用）。
+wchar_t VkToChar(WPARAM vk, LPARAM lParam) {
+    BYTE state[256] = {};
+    if (!::GetKeyboardState(state)) return L'\0';
+    const UINT scan = (static_cast<UINT>(lParam) >> 16) & 0xFFu;
+    wchar_t buf[2] = {};
+    const int n = ::ToUnicode(static_cast<UINT>(vk), scan, state, buf, 2, 0);
+    return n == 1 ? buf[0] : L'\0';
+}
+
 }  // namespace
 
-CMyabcTextService::CMyabcTextService() { DllAddRef(); }
+CMyabcTextService::CMyabcTextService() : key_router_(config_.candidates) { DllAddRef(); }
 
 CMyabcTextService::~CMyabcTextService() { DllRelease(); }
 
@@ -90,6 +92,8 @@ STDMETHODIMP CMyabcTextService::QueryInterface(REFIID riid, void** ppv) {
         *ppv = static_cast<ITfThreadMgrEventSink*>(this);
     } else if (::IsEqualIID(riid, IID_ITfKeyEventSink)) {
         *ppv = static_cast<ITfKeyEventSink*>(this);
+    } else if (::IsEqualIID(riid, IID_ITfCompositionSink)) {
+        *ppv = static_cast<ITfCompositionSink*>(this);
     } else {
         return E_NOINTERFACE;
     }
@@ -115,18 +119,30 @@ STDMETHODIMP CMyabcTextService::ActivateEx(ITfThreadMgr* ptim, TfClientId tid, D
     if (thread_mgr_) thread_mgr_->AddRef();
     tid_ = tid;
 
+    config_ = myabc::config::Load(CurrentUserSid(), AppDataDir());
+
     const HRESULT hr = InitSinks();
     if (FAILED(hr)) {
         Deactivate();
         return hr;
     }
-    ConnectEngineAndHello();  // M0：一次 hello 往返，失败只记日志不阻塞
+
+    candidate_window_ = std::make_unique<myabc::ui::CandidateWindow>();
+    candidate_window_->Create(Widen(config_.ui.font), config_.ui.font_size_pt);
+
+    ConnectEngineAndHello();
     return S_OK;
 }
 
 STDMETHODIMP CMyabcTextService::Deactivate() {
     UninitSinks();
+    if (ipc_) ipc_->FocusOut(kSessionId);
     ipc_.reset();
+    composition_.OnExternallyTerminated();   // 防御性清本地指针；文档侧由框架负责终止
+    if (candidate_window_) {
+        candidate_window_->Destroy();
+        candidate_window_.reset();
+    }
     if (thread_mgr_) {
         thread_mgr_->Release();
         thread_mgr_ = nullptr;
@@ -170,25 +186,23 @@ void CMyabcTextService::UninitSinks() {
 }
 
 void CMyabcTextService::ConnectEngineAndHello() {
-    const myabc::config::Config cfg = myabc::config::Load(CurrentUserSid(), AppDataDir());
-
     IpcClientConfig ic;
-    ic.pipe_name = Widen(cfg.ipc.pipe_name_template);
-    // engine.exe_path 相对安装目录解析（M0：与 TIP DLL 同目录）。
-    ic.engine_exe_path = SelfDir() + L"\\" + Widen(cfg.engine.exe_path);
-    ic.connect_timeout_ms = cfg.ipc.connect_timeout_ms;
-    ic.request_timeout_ms = cfg.ipc.request_timeout_ms;
+    ic.pipe_name = Widen(config_.ipc.pipe_name_template);
+    ic.engine_exe_path = SelfDir() + L"\\" + Widen(config_.engine.exe_path);
+    ic.connect_timeout_ms = config_.ipc.connect_timeout_ms;
+    ic.request_timeout_ms = config_.ipc.request_timeout_ms;
 
     ipc_ = std::make_unique<IpcClient>(std::move(ic));
     if (ipc_->Connect()) {
         const std::string ver = ipc_->Hello();
         ::OutputDebugStringA(("[myabc] engine hello -> \"" + ver + "\"\n").c_str());
+        ipc_->InitSession(kSessionId);
     } else {
-        ::OutputDebugStringA("[myabc] engine hello: connect failed (M0 non-fatal)\n");
+        ::OutputDebugStringA("[myabc] engine hello: connect failed (non-fatal, 按需重连)\n");
     }
 }
 
-// ---- ITfThreadMgrEventSink（M0 占位）-----------------------------------
+// ---- ITfThreadMgrEventSink（M1 仍是占位，见头文件 DECISION）--------------
 STDMETHODIMP CMyabcTextService::OnInitDocumentMgr(ITfDocumentMgr*) { return S_OK; }
 STDMETHODIMP CMyabcTextService::OnUninitDocumentMgr(ITfDocumentMgr*) { return S_OK; }
 STDMETHODIMP CMyabcTextService::OnSetFocus(ITfDocumentMgr*, ITfDocumentMgr*) { return S_OK; }
@@ -196,51 +210,145 @@ STDMETHODIMP CMyabcTextService::OnPushContext(ITfContext*) { return S_OK; }
 STDMETHODIMP CMyabcTextService::OnPopContext(ITfContext*) { return S_OK; }
 
 // ---- ITfKeyEventSink ---------------------------------------------------
-STDMETHODIMP CMyabcTextService::OnSetFocus(BOOL /*fForeground*/) { return S_OK; }
-
-STDMETHODIMP CMyabcTextService::OnTestKeyDown(ITfContext* /*pic*/, WPARAM wParam, LPARAM /*lParam*/,
-                                             BOOL* pfEaten) {
-    // 不变量 3：必须本地同步答复。
-    *pfEaten = key_router_.IsInterestedKey(static_cast<int>(wParam), CompositionState::Idle) ? TRUE
-                                                                                            : FALSE;
+STDMETHODIMP CMyabcTextService::OnSetFocus(BOOL fForeground) {
+    if (!fForeground && candidate_window_) candidate_window_->Hide();
     return S_OK;
 }
 
-STDMETHODIMP CMyabcTextService::OnKeyDown(ITfContext* pic, WPARAM wParam, LPARAM /*lParam*/,
+STDMETHODIMP CMyabcTextService::OnTestKeyDown(ITfContext* /*pic*/, WPARAM wParam, LPARAM lParam,
+                                             BOOL* pfEaten) {
+    // 不变量 3：必须本地同步答复，不问引擎。
+    const wchar_t ch = VkToChar(wParam, lParam);
+    *pfEaten = key_router_.IsInterestedKey(static_cast<int>(wParam), ch, composition_.active(),
+                                          mode_manager_.mode())
+                  ? TRUE
+                  : FALSE;
+    return S_OK;
+}
+
+STDMETHODIMP CMyabcTextService::OnKeyDown(ITfContext* pic, WPARAM wParam, LPARAM lParam,
                                          BOOL* pfEaten) {
-    if (!key_router_.IsInterestedKey(static_cast<int>(wParam), CompositionState::Idle)) {
+    mode_manager_.OnKeyDown(static_cast<int>(wParam));
+
+    const int vk = static_cast<int>(wParam);
+    const wchar_t ch = VkToChar(wParam, lParam);
+    const bool composing = composition_.active();
+
+    if (!key_router_.IsInterestedKey(vk, ch, composing, mode_manager_.mode())) {
         *pfEaten = FALSE;
         return S_OK;
     }
-    *pfEaten = TRUE;
-    // M0：'A' -> 上屏写死的"啊"。异常一律吞掉并放行（不变量：按键异常不影响宿主）。
-    CommitText(pic, KeyRouter::kM0CommitForA);
+    *pfEaten = TRUE;   // 不变量：接下来无论如何都不再放行原键，异常时改走"原样插入"兜底
+
+    if (!ipc_ || (!ipc_->connected() && !ipc_->Connect())) {
+        HideAndResetComposition(pic);
+        if (ch != L'\0') {
+            auto* session = new (std::nothrow) CInsertTextEditSession(pic, tid_, std::wstring(1, ch));
+            if (session) {
+                HRESULT hr = E_FAIL;
+                pic->RequestEditSession(tid_, session, TF_ES_ASYNCDONTCARE | TF_ES_READWRITE, &hr);
+                session->Release();
+            }
+        }
+        return S_OK;
+    }
+
+    ipc::Response resp;
+    const bool ok = ipc_->ProcessKey(kSessionId, vk, static_cast<unsigned>(ch), resp);
+    if (!ok) {
+        // M1-12：引擎无响应/超时 -> 降级，结束组字，不阻塞宿主 UI 线程。
+        ::OutputDebugStringA("[myabc] processKey timeout/IO error -> 降级\n");
+        HideAndResetComposition(pic);
+        return S_OK;
+    }
+
+    if (!resp.ok || !resp.result.value("handled", false)) {
+        // 引擎明确没接住这个键：别丢字符，原样插入。
+        if (ch != L'\0') {
+            auto* session = new (std::nothrow) CInsertTextEditSession(pic, tid_, std::wstring(1, ch));
+            if (session) {
+                HRESULT hr = E_FAIL;
+                pic->RequestEditSession(tid_, session, TF_ES_ASYNCDONTCARE | TF_ES_READWRITE, &hr);
+                session->Release();
+            }
+        }
+        return S_OK;
+    }
+
+    ApplyEngineResponse(pic, resp);
     return S_OK;
 }
 
-STDMETHODIMP CMyabcTextService::OnTestKeyUp(ITfContext*, WPARAM, LPARAM, BOOL* pfEaten) {
-    *pfEaten = FALSE;
+STDMETHODIMP CMyabcTextService::OnTestKeyUp(ITfContext* /*pic*/, WPARAM wParam, LPARAM lParam,
+                                           BOOL* pfEaten) {
+    const wchar_t ch = VkToChar(wParam, lParam);
+    *pfEaten = key_router_.IsInterestedKey(static_cast<int>(wParam), ch, composition_.active(),
+                                          mode_manager_.mode())
+                  ? TRUE
+                  : FALSE;
     return S_OK;
 }
-STDMETHODIMP CMyabcTextService::OnKeyUp(ITfContext*, WPARAM, LPARAM, BOOL* pfEaten) {
-    *pfEaten = FALSE;
+
+STDMETHODIMP CMyabcTextService::OnKeyUp(ITfContext* pic, WPARAM wParam, LPARAM /*lParam*/,
+                                       BOOL* pfEaten) {
+    const bool toggled = mode_manager_.OnKeyUp(static_cast<int>(wParam));
+    if (toggled && composition_.active()) HideAndResetComposition(pic);
+    *pfEaten = FALSE;   // Shift/普通键弹起本身不产生字符
     return S_OK;
 }
+
 STDMETHODIMP CMyabcTextService::OnPreservedKey(ITfContext*, REFGUID, BOOL* pfEaten) {
     *pfEaten = FALSE;
     return S_OK;
 }
 
+// ---- ITfCompositionSink -------------------------------------------------
+STDMETHODIMP CMyabcTextService::OnCompositionTerminated(TfEditCookie /*ec*/,
+                                                        ITfComposition* /*composition*/) {
+    composition_.OnExternallyTerminated();
+    if (candidate_window_) candidate_window_->Hide();
+    return S_OK;
+}
+
 // ---- helpers ---------------------------------------------------------
-void CMyabcTextService::CommitText(ITfContext* context, const wchar_t* text) {
-    if (context == nullptr || tid_ == TF_CLIENTID_NULL) return;
+void CMyabcTextService::HideAndResetComposition(ITfContext* context) {
+    if (composition_.active() && context != nullptr) {
+        composition_.Cancel(context, tid_);
+    }
+    if (candidate_window_) candidate_window_->Hide();
+}
 
-    auto* session = new (std::nothrow) CInsertTextEditSession(context, tid_, text);
-    if (session == nullptr) return;
+void CMyabcTextService::ApplyEngineResponse(ITfContext* context, const ipc::Response& resp) {
+    CompositionState state;
+    state.ApplyResult(resp.result);
 
-    HRESULT hrSession = E_FAIL;
-    context->RequestEditSession(tid_, session, TF_ES_ASYNCDONTCARE | TF_ES_READWRITE, &hrSession);
-    session->Release();
+    if (state.has_commit) {
+        composition_.EndWithText(context, tid_, state.commit_text);
+        if (candidate_window_) candidate_window_->Hide();
+        return;
+    }
+
+    if (state.composing) {
+        RECT caret{};
+        composition_.StartOrUpdate(context, tid_, this, state.preedit, &caret);
+
+        if (candidate_window_) {
+            if (!state.candidates.empty()) {
+                myabc::ui::CandidateViewModel vm;
+                vm.preedit = state.preedit;
+                for (const auto& c : state.candidates) vm.items.push_back(c.text);
+                vm.page_index = state.page_index;
+                vm.page_total = state.page_total;
+                candidate_window_->Show(caret, vm);
+            } else {
+                candidate_window_->Hide();
+            }
+        }
+        return;
+    }
+
+    // handled=true 但既没 commit 也不再 composing（ESC 取消 / 退格清空到底）。
+    HideAndResetComposition(context);
 }
 
 }  // namespace myabc::tsf

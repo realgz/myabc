@@ -1,5 +1,18 @@
 # 未留痕债务登记表
 
+（M1 R2 各条追加于此，日期 2026-09-11；置顶方便查看，历史条目见下方原表）
+
+| 日期 | 条目 | 处理状态 |
+|---|---|---|
+| 2026-09-11 | **M1 R2：候选窗用 GDI 而非 Direct2D/DirectWrite**。plan 02 §3.4 原写 `ui/renderer_d2d.cpp` + d2d1/dwrite/dcomp/windowscodecs。改用 GDI（`BeginPaint`/`DrawTextW`）：候选列表就是几行文字+高亮，D2D 在这个复杂度下只增加依赖面和样板代码；M2 候选窗要迁到独立 UI 进程，届时若要视觉升级一起重写渲染层成本更低。窗口本身仍按计划起独立线程+消息泵（`candidate_window.cpp` 的 `ThreadProc`），不占 TIP 线程。 | 已决策，M1 R2 |
+| 2026-09-11 | **M1 R2：字符映射用 `ToUnicode`，有已知局限**。`myabc_text_service.cpp` 的 `VkToChar` 用 `GetKeyboardState`+`ToUnicode` 把 vk 映射成可打印字符，是 TSF 按键处理的标准手法，但 `ToUnicode` 有副作用：遇到死键（重音符合成，如某些欧洲语言布局）会改变系统级死键缓冲区状态，可能干扰其它同时输入重音字符的应用。M1 验收场景（美式键盘字母/数字/标点）不触发，非西欧布局兼容性留 M6（"浏览器/UWP/Office 兼容打磨"）再评估。 | 待 M6 评估 |
+| 2026-09-11 | **M1 R2：OnTestKeyUp 与 OnTestKeyDown 用同一份判定**。TSF 惯例是 KeyUp 的"是否吃"应和对应 KeyDown 一致（否则宿主可能收到孤立的 KeyUp）；本项目未按"同一次按键"精确配对（如两次判定之间 composing_ 状态变化的极端时序），而是让 `OnTestKeyUp` 独立调用与 `OnTestKeyDown` 相同的 `KeyRouter::IsInterestedKey`。正常单键按下-弹起场景（远快于组字状态切换）下行为一致；极端交错时序是已知但极低概率的边界情况。 | 观察中 |
+| 2026-09-11 | **M1 R2：候选窗字号用近似换算**。`config.ui.font_size_pt` 是"pt"，`candidate_window.cpp` 用 `pt * 96 / 72` 换算成像素高度，按 96 DPI（100% 缩放）假设，未做 Per-Monitor-V2 DPI 感知（plan §3.4 原提到"Per-Monitor-V2 DPI"）。高 DPI 显示器下候选窗字体可能偏小。留到候选窗迁独立 UI 进程（M2）时按目标显示器 DPI 重新计算。 | 待 M2 |
+| 2026-09-11 | **M1 R2：composition_/session 状态仍是"单一活跃焦点"简化**（承接 M1 R1 单一引擎实例的同一类简化，见下方 M1 R1 条目）。`CMyabcTextService` 用固定 `kSessionId=1`，且 `CompositionController` 只跟踪"当前"一个 `ITfComposition`，不按 `ITfContext*` 建表。多文档/多窗口同时组字会互相干扰；M0/M1 验收场景（单记事本窗口）不受影响，真正的按 context 隔离留 M2。 | 待 M2 |
+| 2026-09-11 | **M1 R2：TSF/COM 代码来源说明（追加）**。`backend/composition.cpp` 的 `StartComposition`/`EndComposition` 调用序列（`InsertTextAtSelection(TF_IAS_QUERYONLY)` 取 range -> `ITfContextComposition::StartComposition` -> `range->SetText`）按 TSF 官方文档 + 微软 SampleIME/TableTextService（MIT）的标准写法编写，未逐行拷贝，未携带版权头（同 M0 R3 条目的处理方式）。 | 已说明，M1 R2 |
+
+---
+
 登记来不及立即建 ADR 的决策，以及需在实现期补记来源/License 的第三方代码复用。
 
 | 日期 | 条目 | 处理状态 |

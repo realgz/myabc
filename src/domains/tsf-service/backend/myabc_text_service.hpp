@@ -3,10 +3,13 @@
 // src/domains/tsf-service/backend/myabc_text_service.hpp --- TSF TIP 主对象
 //
 // 依据：docs/plan/01-m0-tsf-skeleton-plan.md §3.3
+//       docs/plan/02-m1-libpinyin-quanpin-plan.md §3.5
 //       docs/architecture/system-overview.md §7 不变量 1/3/4/5
 //
-// M0 实现：ITfTextInputProcessorEx（Activate/ActivateEx/Deactivate）、
-//          ITfThreadMgrEventSink（占位）、ITfKeyEventSink（'A' -> 上屏"啊"）。
+// M1：完整 processKey 往返 + 预编辑显示（ITfComposition）+ 候选窗 + Shift 中英切换。
+// DECISION: 单一 CMyabcTextService 实例同一时刻只跟踪一个"当前有焦点的 context"的组字
+// 状态（composition_/session_id_ 都是单值成员，不是按 context 建表）。多文档同时组字
+// 会互相干扰；M0/M1 的记事本单窗口验收场景不受影响，真正的按 context 隔离留 M2。
 
 #ifndef MYABC_TSF_TEXT_SERVICE_HPP
 #define MYABC_TSF_TEXT_SERVICE_HPP
@@ -16,14 +19,19 @@
 
 #include <memory>
 
+#include "candidate_window.hpp"
+#include "composition.hpp"
+#include "config_defaults.hpp"
 #include "ipc_client.hpp"
 #include "key_router.hpp"
+#include "mode_manager.hpp"
 
 namespace myabc::tsf {
 
 class CMyabcTextService final : public ITfTextInputProcessorEx,
                                 public ITfThreadMgrEventSink,
-                                public ITfKeyEventSink {
+                                public ITfKeyEventSink,
+                                public ITfCompositionSink {
 public:
     CMyabcTextService();
 
@@ -37,7 +45,7 @@ public:
     STDMETHODIMP Deactivate() override;
     STDMETHODIMP ActivateEx(ITfThreadMgr* ptim, TfClientId tid, DWORD dwFlags) override;
 
-    // ITfThreadMgrEventSink（M0 全部返回 S_OK）
+    // ITfThreadMgrEventSink（M1 仍是占位——按 context 维护组字状态留 M2）
     STDMETHODIMP OnInitDocumentMgr(ITfDocumentMgr*) override;
     STDMETHODIMP OnUninitDocumentMgr(ITfDocumentMgr*) override;
     STDMETHODIMP OnSetFocus(ITfDocumentMgr*, ITfDocumentMgr*) override;
@@ -52,21 +60,35 @@ public:
     STDMETHODIMP OnKeyUp(ITfContext* pic, WPARAM wParam, LPARAM lParam, BOOL* pfEaten) override;
     STDMETHODIMP OnPreservedKey(ITfContext* pic, REFGUID rguid, BOOL* pfEaten) override;
 
+    // ITfCompositionSink
+    STDMETHODIMP OnCompositionTerminated(TfEditCookie ec, ITfComposition* composition) override;
+
 private:
     ~CMyabcTextService();
 
     HRESULT InitSinks();
     void    UninitSinks();
-    void    CommitText(ITfContext* context, const wchar_t* text);
     void    ConnectEngineAndHello();
+
+    // 把引擎 Response.result 应用到文档（起/改/结束组字）+ 候选窗，vk 用于失败时决定
+    // 是否放行原键（不变量：按键异常不影响宿主，见 plan §6 风险）。
+    void ApplyEngineResponse(ITfContext* context, const ipc::Response& resp);
+    void HideAndResetComposition(ITfContext* context);
 
     LONG ref_ = 1;
     ITfThreadMgr* thread_mgr_ = nullptr;
     TfClientId tid_ = TF_CLIENTID_NULL;
     DWORD thread_mgr_cookie_ = TF_INVALID_COOKIE;
 
+    // M1 固定值：单一活跃组合的 sessionId（见类头 DECISION）。
+    static constexpr std::uint32_t kSessionId = 1;
+
+    myabc::config::Config config_;
     KeyRouter key_router_;
+    ModeManager mode_manager_;
     std::unique_ptr<IpcClient> ipc_;
+    CompositionController composition_;
+    std::unique_ptr<myabc::ui::CandidateWindow> candidate_window_;
 };
 
 }  // namespace myabc::tsf

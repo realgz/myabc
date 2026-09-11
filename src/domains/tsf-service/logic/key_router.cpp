@@ -1,16 +1,54 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // src/domains/tsf-service/logic/key_router.cpp
-// 依据：docs/plan/01-m0-tsf-skeleton-plan.md §3.3
+// 依据：docs/plan/02-m1-libpinyin-quanpin-plan.md §3.5
 
 #include "key_router.hpp"
 
+#include <windows.h>
+
+#include <array>
+#include <cwctype>
+
 namespace myabc::tsf {
 
-bool KeyRouter::IsInterestedKey(int vk, CompositionState state) const noexcept {
-    // M0：与组字态无关，仅吃 'A'。
-    (void)state;
-    return vk == 'A';
+namespace {
+bool IsAsciiLetter(wchar_t ch) {
+    return (ch >= L'a' && ch <= L'z') || (ch >= L'A' && ch <= L'Z');
+}
+
+constexpr std::array<wchar_t, 8> kPunctuationAscii{L',', L'.', L';', L':', L'?', L'!', L'(', L')'};
+}  // namespace
+
+bool KeyRouter::IsMappedPunctuationAscii(wchar_t ch) noexcept {
+    for (wchar_t p : kPunctuationAscii) {
+        if (p == ch) return true;
+    }
+    return false;
+}
+
+bool KeyRouter::IsInterestedKey(int vk, wchar_t ch, bool composing, InputMode mode) const noexcept {
+    if (mode == InputMode::kEnglish) return false;   // M1-9：直接放行
+
+    if (composing) {
+        if (vk == VK_BACK || vk == VK_ESCAPE || vk == VK_SPACE) return true;
+        if (ch != L'\0') {
+            if (candidates_cfg_.select_keys.find(static_cast<char>(ch)) != std::string::npos) {
+                return true;
+            }
+            if (candidates_cfg_.page_prev_keys.find(static_cast<char>(ch)) != std::string::npos) {
+                return true;
+            }
+            if (candidates_cfg_.page_next_keys.find(static_cast<char>(ch)) != std::string::npos) {
+                return true;
+            }
+            if (IsAsciiLetter(ch)) return true;
+        }
+        return false;
+    }
+
+    if (ch == L'\0') return false;
+    return IsAsciiLetter(ch) || IsMappedPunctuationAscii(ch);
 }
 
 }  // namespace myabc::tsf
