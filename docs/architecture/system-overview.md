@@ -150,9 +150,9 @@ sessionId 由 TIP 每个文档上下文分配，隔离多窗口并发组字。
 | engine.model_dir | <安装目录>\data | libpinyin 系统词库/模型目录 |
 | engine.user_data_dir | %APPDATA%\myabc\userdata | 用户词库、学习数据 |
 | engine.exe_path | <安装目录>\myabc-engine.exe | TIP 拉起引擎用 |
-| engine.idle_exit_minutes | 10 | 引擎空闲自退出 |
+| engine.idle_exit_minutes | 30 | 引擎空闲自退出（2026-09-11 由 10 调大，见 debt-log：减少冷启动触发频率） |
 | ipc.pipe_name_template | \.\pipe\myabc-engine-{sid} | 管道名模板 |
-| ipc.connect_timeout_ms | 2000 | 首次连接（含拉起引擎）总超时 |
+| ipc.connect_timeout_ms | 8000 | 首次连接（含拉起引擎）总超时（2026-09-11 由 2000 调大，见 debt-log：真机反馈冷启动慢导致卡顿+无候选） |
 | ipc.request_timeout_ms | 50 | 单次按键请求超时，超时降级 |
 | ipc.connect_backoff_ms | [50,100,200,400] | 重试退避序列 |
 | candidates.page_size | 9 | 每页候选数 |

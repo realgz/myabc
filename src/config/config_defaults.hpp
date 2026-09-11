@@ -28,7 +28,15 @@ struct IpcConfig {
     std::string pipe_name_template = R"(\\.\pipe\myabc-engine-{sid})";
     // M2（plan 03 §3.2）：引擎 -> myabc-ui 的单向推送通道，独立命名管道。
     std::string ui_pipe_name_template = R"(\\.\pipe\myabc-ui-{sid})";
-    std::uint32_t connect_timeout_ms = 2000;   // 首次连接（含拉起引擎）总超时
+    // 首次连接（含拉起引擎）总超时。DECISION（真机反馈"新机器上记事本卡顿+没候选"，
+    // 见 docs/decisions/_debt-log.md 2026-09-11）：引擎冷启动要先跑完
+    // pinyin_init()（加载全部词库/模型，本机实测约几十毫秒，但更慢的磁盘/首次
+    // 运行被杀毒软件实时扫描时可能明显更久）才开始监听管道，在此之前 TIP 侧
+    // Connect() 的每次重试都会失败；原 2000ms 在较慢的机器上可能不够，导致那次
+    // 按键直接判定"引擎没接住"、原样放行字母，表现为卡顿+不出候选。调大到 8000ms
+    // 只影响"连不上时最多等多久"这个上限，连接一旦成功立刻返回，不影响正常按键
+    // 延迟（那是 request_timeout_ms 管的，未改）。
+    std::uint32_t connect_timeout_ms = 8000;
     std::uint32_t request_timeout_ms = 50;     // 单次按键请求超时，超时降级
     // 重试退避序列（毫秒）。空 => 不退避直接失败。
     std::string connect_backoff_ms_csv = "50,100,200,400";
@@ -39,7 +47,11 @@ struct EngineConfig {
     std::string exe_path = "myabc-engine.exe";
     std::string model_dir = "data";                 // 相对安装目录
     std::string user_data_dir = "{appdata}/myabc/userdata";
-    std::uint32_t idle_exit_minutes = 10;
+    // DECISION（同上 connect_timeout_ms 条目）：调大到 30 分钟，减少正常使用中（打字
+    // 间隙常见的几分钟停顿）触发引擎冷启动的频率——每次冷启动都是一次"可能撞上
+    // connect_timeout_ms 上限"的风险窗口，退出得越不频繁，用户越不容易撞上。
+    // 引擎本身内存占用不大（词库常驻），30 分钟真空闲不算浪费。
+    std::uint32_t idle_exit_minutes = 30;
 };
 
 // M1 新增（docs/plan/02-m1-libpinyin-quanpin-plan.md §3.6）。

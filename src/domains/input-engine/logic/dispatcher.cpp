@@ -140,12 +140,21 @@ Response Dispatcher::HandleSetCaretRect(const Request& req) {
         rect.w = req.params.value("w", 0);
         rect.h = req.params.value("h", 0);
 
-        std::vector<CandidateItem> items;
-        items.reserve(it->second.candidates.size());
-        for (const auto& c : it->second.candidates) items.push_back(CandidateItem{c.text, false});
+        // DECISION（真机反馈"候选框偶尔出现在左上角"，见 docs/decisions/_debt-log.md
+        // 2026-09-11）：根因是 TIP 侧 ITfContextView::GetTextExt 偶尔在组字刚开始、
+        // 宿主布局还没稳定时失败或给出退化矩形，composition.cpp 没检查 HRESULT，
+        // 于是把零初始化的 RECT{}（即 x=y=w=h=0）原样发过来。收到这种明显无效的矩形
+        // 时不推 uiShow——宁可候选窗这一帧维持原样（通常是隐藏），也不要跳到屏幕
+        // 左上角；下一次按键 TIP 会重新算一次 GetTextExt，多数情况下立刻就好了
+        // （用户实测反馈正是"一开始在左上角，后来就正常了"这个自愈模式）。
+        if (rect.w > 0 && rect.h > 0) {
+            std::vector<CandidateItem> items;
+            items.reserve(it->second.candidates.size());
+            for (const auto& c : it->second.candidates) items.push_back(CandidateItem{c.text, false});
 
-        ui_bridge_->PushShow(id, rect, it->second.preedit, items, it->second.page_index,
-                            it->second.page_size, it->second.page_total, it->second.armed_index);
+            ui_bridge_->PushShow(id, rect, it->second.preedit, items, it->second.page_index,
+                                it->second.page_size, it->second.page_total, it->second.armed_index);
+        }
     }
     return Response::Ok(req.id, Json::object());
 }
