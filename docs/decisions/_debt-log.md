@@ -1,6 +1,12 @@
 # 未留痕债务登记表
 
-（空格两段式确认 + M5 各条追加于此，日期 2026-09-11；置顶方便查看，历史条目见下方原表）
+（v0.1 安装包 + 空格两段式确认 + M5 各条追加于此，日期 2026-09-11；置顶方便查看，历史条目见下方原表）
+
+| 日期 | 条目 | 处理状态 |
+|---|---|---|
+| 2026-09-11 | **v0.1 安装包：Inno Setup，仅 x64，打包 `out/Release/install-x64/` 而非 `scripts/stage.ps1` 的分 Config/arch 布局**。项目里实际存在两套"汇总产物"路径：`stage.ps1` 产出 `out/<Config>/{x64,x86,engine}/` 分目录布局（design 阶段就有，供 M6 多架构并存设计）；而本会话历次真机验证用的是手工维护的 `out/Release/install-x64/` 扁平目录（tip.dll/engine.exe/deployer.exe/ui.exe/libpinyin.dll 等全部同目录，`SelfDir()+相对路径` 的约定天然成立）。装包脚本 `installer/myabc.iss` 直接打包后者——这是唯一经过真实反复验证（M0-M5 历次真机测试）的布局；`stage.ps1` 的分目录布局虽然更"整洁"，但从未验证过 tip.dll 用 `SelfDir()+"\\..\\engine\\myabc-engine.exe"` 这类跨目录相对路径能不能找到引擎（现有代码里 `engine.exe_path` 默认值就是裸文件名，暗含"同目录"假设）——留作后续「M6 多架构安装包」重新设计安装布局时一并解决，不在 v0.1 阻塞。仅 x64（M6 前未落地 x86 双 InprocServer32，见 M0 R4 条目）。用 Inno Setup 的 `CloseApplications=yes`（Restart Manager）应对本会话实测发现的"myabc-tip.dll 被 TextInputHost.exe/ctfmon.exe 占住"问题，不用每次替换都手动 taskkill 系统进程。真实 install→status验证→uninstall→status验证→重装 全链路跑通（非只编译通过）。 | 已实现并验证，v0.1 |
+| 2026-09-11 | **v0.1：新增仓库根 `LICENSE`（GPL-3.0-or-later 全文，直接取自 `third_party/libpinyin/COPYING`）**。项目自 2026-09-09 就决策"整体 GPL-3.0-or-later"（`docs/decisions/pinyin-engine/`），但推公开仓库前一直没有落地 LICENSE 文件本身——首次公开发布前补上，属于"早该做但一直没到不能拖的时候"的典型欠账，现在借 v0.1 发布这个节点一并处理。 | 已补齐，v0.1 |
+| 2026-09-11 | **v0.1 用户词库不随卸载删除**：`installer/myabc.iss` 的 `[UninstallDelete]` 只删安装目录（程序文件），不碰 `%APPDATA%\myabc`（用户学习数据/配置）——避免用户重装/升级后自学习成果被清空；真要清空走 `myabc-deployer --clear-userdict`（M5 已有）。 | 已决策，v0.1 |
 
 | 日期 | 条目 | 处理状态 |
 |---|---|---|

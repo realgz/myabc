@@ -13,3 +13,7 @@ third_party/libpinyin/
 vcpkg_installed/
 *.user
 CMakeUserPresets.json
+
+# installer/myabc.iss 是源码，编译产物（安装包 exe + 编译日志）不入库——
+# 随每次 tag 的 GitHub Release 附件分发，见 docs/decisions/_debt-log.md。
+installer/dist/
