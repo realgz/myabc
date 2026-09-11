@@ -145,7 +145,7 @@ Response Dispatcher::HandleSetCaretRect(const Request& req) {
         for (const auto& c : it->second.candidates) items.push_back(CandidateItem{c.text, false});
 
         ui_bridge_->PushShow(id, rect, it->second.preedit, items, it->second.page_index,
-                            it->second.page_size, it->second.page_total);
+                            it->second.page_size, it->second.page_total, it->second.armed_index);
     }
     return Response::Ok(req.id, Json::object());
 }

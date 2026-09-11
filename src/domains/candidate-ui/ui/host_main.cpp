@@ -82,6 +82,7 @@ void ApplyMessage(myabc::ui::CandidateWindow& win, const myabc::ipc::Request& re
         vm.page_index = it->value("index", 0);
         vm.page_total = it->value("total", 0);
     }
+    vm.armed_index = req.params.value("armedIndex", -1);
 
     RECT anchor{};
     if (const auto it = req.params.find("caretRect"); it != req.params.end() && it->is_object()) {

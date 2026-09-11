@@ -116,7 +116,7 @@ bool UiBridge::WriteJson(const std::string& utf8_json) {
 
 void UiBridge::PushShow(std::uint32_t session_id, const CaretRect& rect, const std::string& preedit,
                         const std::vector<CandidateItem>& candidates, int page_index, int page_size,
-                        int page_total) {
+                        int page_total, int armed_index) {
     ipc::Json items = ipc::Json::array();
     for (const auto& c : candidates) items.push_back(ipc::Json{{"text", c.text}});
 
@@ -129,6 +129,7 @@ void UiBridge::PushShow(std::uint32_t session_id, const CaretRect& rect, const s
         {"preedit", preedit},
         {"candidates", items},
         {"page", ipc::Json{{"index", page_index}, {"size", page_size}, {"total", page_total}}},
+        {"armedIndex", armed_index},
     };
     WriteJson(ipc::EncodeRequest(req));
 }

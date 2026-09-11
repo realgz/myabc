@@ -26,7 +26,10 @@ namespace myabc::ipc {
 // v3-4：M3/M4 均未改协议结构（见 docs/decisions/_debt-log.md 2026-09-11 各自条目），版本
 // 一直停在 2。v5（M5，docs/plan/06-m5-user-dict-learning-plan.md §3.3）：新增管理类方法
 // userDictExport/userDictImport/userDictClear（非热路径，deployer CLI 用，见 dispatcher.cpp）。
-inline constexpr std::uint32_t kProtocolVersion = 5;
+// v6（用户 2026-09-11 明确要求的智能ABC 风格空格两段式确认，见 session.cpp DECISION）：
+// uiShow 新增 armedIndex 字段——候选数>1 时空格先"架住"候选[0]（高亮不上屏），
+// 再按一次空格/数字键才真正选中；-1 表示当前没有被架住的候选。
+inline constexpr std::uint32_t kProtocolVersion = 6;
 
 // 长度前缀帧：uint32 小端长度 + 该长度的 UTF-8 JSON 字节。
 inline constexpr std::uint32_t kMaxFrameBytes = 1u << 20;  // 1 MiB 上限，防御坏帧

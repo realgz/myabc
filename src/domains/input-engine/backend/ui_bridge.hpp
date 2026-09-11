@@ -41,9 +41,11 @@ public:
     UiBridge(const UiBridge&) = delete;
     UiBridge& operator=(const UiBridge&) = delete;
 
+    // armed_index：智能ABC 风格空格两段式确认（v6，见 protocol.hpp DECISION）。
+    // -1 = 无；>=0 = 当前页这个下标的候选被"架住"，UI 应高亮但不当作已选中。
     void PushShow(std::uint32_t session_id, const CaretRect& rect, const std::string& preedit,
                  const std::vector<CandidateItem>& candidates, int page_index, int page_size,
-                 int page_total);
+                 int page_total, int armed_index);
     void PushHide(std::uint32_t session_id);
 
 private:

@@ -41,7 +41,22 @@ SessionResult Session::ProcessKey(int vk, unsigned ch) {
             return Recompute();
         }
         if (vk == VK_ESCAPE) return CancelComposition();
-        if (vk == VK_SPACE) return SelectCandidate(0);
+        // DECISION（智能ABC 风格空格两段式确认，用户 2026-09-11 明确要求，见
+        // docs/decisions/_debt-log.md）：候选只有 0/1 个时没有歧义，空格直接选中上屏
+        // （原有行为）。候选 >=2 个时空格不再直接吞下候选[0]——第一次空格只是把
+        // 候选[0]"架"上（UI 高亮，不上屏，组字继续），逼用户看一眼是不是真的要这个；
+        // 第二次空格（或直接按数字键，数字键不受这套两段式影响）才真正选中上屏。
+        // raw_ 只要一变化（追加字母/退格/翻页/换段）就通过 Recompute()/相关分支清掉
+        // space_armed_，防止"架住的是上一份候选"这种错位。
+        if (vk == VK_SPACE) {
+            if (candidates_.size() <= 1) return SelectCandidate(0);
+            if (!space_armed_) {
+                space_armed_ = true;
+                return BuildViewResult(true);
+            }
+            space_armed_ = false;
+            return SelectCandidate(0);
+        }
 
         // M4：一旦 raw_ 以 number_lead_key 开头（如 "i"），数字/小数点/负号必须能
         // 继续拼数字本身（"i2025" 的 '2'..'5'），不能被 select_keys（"123456789"）
@@ -142,6 +157,7 @@ SessionResult Session::SelectCandidate(int index_in_page) {
     candidates_ = engine_.candidates();
     current_source_uses_engine_choose_ = true;   // engine_.candidates() 天然 1:1，无需过滤映射
     page_index_ = 0;
+    space_armed_ = false;   // 换到剩余段的新候选列表，之前架的那份已经过期
     last_partial_sentence_ = sentence_text;
     return BuildViewResult(true);
 }
@@ -154,6 +170,7 @@ SessionResult Session::PageCandidates(int delta) {
     int idx = page_index_ + delta;
     idx = std::clamp(idx, 0, std::max(0, total - 1));
     page_index_ = idx;
+    space_armed_ = false;   // 翻页后"候选[0]"已经是另一页的另一项，之前架的状态作废
     return BuildViewResult(true);
 }
 
@@ -188,6 +205,7 @@ void Session::FocusOut() { ResetToIdle(); }
 
 SessionResult Session::Recompute() {
     last_partial_sentence_.clear();
+    space_armed_ = false;   // raw_ 变了，之前架着的候选（如果有）已经过期
     const InputContext ctx{InputMode::kChinese, raw_, composing_};
     CandidateSource* src = registry_.Resolve(ctx);
     if (src == nullptr) {
@@ -226,6 +244,7 @@ SessionResult Session::BuildViewResult(bool handled, bool has_commit, std::strin
     }
     r.has_commit = has_commit;
     r.commit = std::move(commit);
+    r.armed_index = space_armed_ ? 0 : -1;
     return r;
 }
 
@@ -245,6 +264,7 @@ void Session::ResetToIdle() {
     last_partial_sentence_.clear();
     candidates_.clear();
     page_index_ = 0;
+    space_armed_ = false;
     engine_.Reset();
 }
 

@@ -20,6 +20,9 @@ struct CandidateViewModel {
     std::vector<std::wstring> items;   // 当前页，序号 1..N 对应选字键
     int page_index = 0;
     int page_total = 0;
+    // 智能ABC 风格空格两段式确认（protocol v6 armedIndex）：-1 = 无高亮；
+    // >=0 = items 里这个下标被"架住"，还没真正选中，渲染层应画出高亮但不当作已上屏。
+    int armed_index = -1;
 };
 
 }  // namespace myabc::ui

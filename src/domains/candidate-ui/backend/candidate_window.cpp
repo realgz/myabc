@@ -173,6 +173,15 @@ void CandidateWindow::Paint(HWND hwnd) {
 
     for (std::size_t i = 0; i < model_.items.size(); ++i) {
         RECT item_line{kPaddingPx, y, client.right - kPaddingPx, y + kLineHeightPx};
+        // 智能ABC 风格空格两段式确认（armed_index，见 candidate_view_model.hpp）：
+        // 这一项被"架住"但还没真正选中——画一个高亮底色区分于普通候选行，让用户在
+        // 按第二次空格/数字键确认前，能看清楚"再按一下就是它了"。
+        if (model_.armed_index >= 0 && static_cast<std::size_t>(model_.armed_index) == i) {
+            RECT hl{0, y, client.right, y + kLineHeightPx};
+            const HBRUSH brush = ::CreateSolidBrush(RGB(0xCC, 0xE5, 0xFF));
+            ::FillRect(dc, &hl, brush);
+            ::DeleteObject(brush);
+        }
         const std::wstring text = std::to_wstring(i + 1) + L". " + model_.items[i];
         ::DrawTextW(dc, text.c_str(), static_cast<int>(text.size()), &item_line,
                    DT_LEFT | DT_SINGLELINE | DT_NOPREFIX);

@@ -64,6 +64,10 @@ struct SessionResult {
     int page_total = 0;
     bool has_commit = false;
     std::string commit;
+    // 智能ABC 风格空格两段式确认（见 session.cpp ProcessKey 的 VK_SPACE 分支 DECISION）：
+    // -1 = 当前没有"架着待确认"的候选；>=0 = 当前页里这个下标的候选被架着，UI 应高亮
+    // 它但还没有上屏。目前实现里只会是 0（架的永远是当前页第一项）。
+    int armed_index = -1;
 };
 
 class Session {
@@ -102,6 +106,10 @@ private:
     std::string last_partial_sentence_;        // 部分确认后的展示文本；追加/退格字母时清空
     std::vector<CandidateItem> candidates_;    // 全量（未分页）
     int page_index_ = 0;
+    // 空格两段式确认的"架住"状态：候选数>1 时第一次按空格只把它置 true（高亮候选[0]，
+    // 不上屏）；第二次按空格（或直接按数字键）才真正 SelectCandidate。raw_ 变化
+    // （追加字母/退格/翻页/换到下一段）一律清掉，语义上"这次架的是哪份候选"已经过期。
+    bool space_armed_ = false;
     // 当前 candidates_ 是哪个 CandidateSource 产出的（CandidateSource::UsesEngineChoose()），
     // 决定 SelectCandidate/CommitComposition 该不该查 libpinyin（见 session.cpp DECISION，
     // M5 前修复：数字/金额候选选不中的真 bug）。Recompute() 里跟 candidates_ 一起刷新。
