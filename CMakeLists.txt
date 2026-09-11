@@ -62,6 +62,11 @@ if(MYABC_TOOLCHAIN STREQUAL "msvc")
         src/domains/candidate-ui
     )
 elseif(MYABC_TOOLCHAIN STREQUAL "mingw")
+    # 在顶层（而非 input-engine 子目录）find_package，让 tests/unit 也能看到结果变量/
+    # target——CMake 子目录变量不向兄弟目录传播，GLOBAL 导入 target 才跨目录可见。
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(GLIB2 REQUIRED IMPORTED_TARGET GLOBAL glib-2.0)
+    find_package(LibPinyin REQUIRED)   # M1：input-engine 用；见 cmake/FindLibPinyin.cmake
     set(_domains
         src/domains/input-engine
         src/domains/user-dict

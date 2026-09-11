@@ -1,0 +1,55 @@
+# myabc 中文模式标点全角映射表。
+# 依据 docs/plan/02-m1-libpinyin-quanpin-plan.md §3.2/§3.6。
+#
+# 现状（2026-09-11）：config_loader 尚未实现 TOML 解析（M0 起的已知 TODO，见
+# docs/decisions/_debt-log.md），本文件是"数据应该长什么样"的权威草稿；
+# src/domains/input-engine/logic/candidate/punctuation_source.cpp 里内嵌了
+# 标了 m1 = true 的条目作为过渡实现。TOML loader 落地后由它接管，
+# punctuation_source.cpp 的内嵌表随之删除。
+#
+# 引号（‘’“”）需要"开/关"配对状态机（同一个 ' 按输入顺序交替出前引号/后引号），
+# 不是本表这种一对一映射，留 M3+ 单独实现。
+
+[[map]]
+ascii = ","
+full_width = "，"
+m1 = true
+
+[[map]]
+ascii = "."
+full_width = "。"
+m1 = true
+
+[[map]]
+ascii = ";"
+full_width = "；"
+m1 = true
+
+[[map]]
+ascii = ":"
+full_width = "："
+m1 = true
+
+[[map]]
+ascii = "?"
+full_width = "？"
+m1 = true
+
+[[map]]
+ascii = "!"
+full_width = "！"
+m1 = true
+
+[[map]]
+ascii = "("
+full_width = "（"
+m1 = true
+
+[[map]]
+ascii = ")"
+full_width = "）"
+m1 = true
+
+# 引号配对，M3+：
+# [[map]] ascii = "'"  paired = ["‘", "’"]
+# [[map]] ascii = "\"" paired = ["“", "”"]

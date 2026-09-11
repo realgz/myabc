@@ -2,14 +2,15 @@
 //
 // src/domains/input-engine/logic/engine_main.cpp --- myabc-engine.exe 入口
 //
-// 依据：docs/plan/01-m0-tsf-skeleton-plan.md §3.5 / §5（M0-2 / M0-4 / M0-8）
+// 依据：docs/plan/01-m0-tsf-skeleton-plan.md §3.5 / §5
+//       docs/plan/02-m1-libpinyin-quanpin-plan.md §3.3 / §5（M1-1：真 selftest）
 //       docs/architecture/system-overview.md §4
 //
 // 用法：
-//   myabc-engine.exe --selftest [--model-dir <dir>]   -> 打印自测行，退出 0（M0 占位）
-//   myabc-engine.exe [--pipe <name>] [--sid <sid>]     -> 进管道服务端循环
-//
-// M0 不接入 libpinyin：--selftest 仅确认可执行文件能跑、参数解析正常。
+//   myabc-engine.exe --selftest [--model-dir <dir>]
+//       -> pinyin_init(model-dir) -> 解析 "nihao" -> 断言含"你好"，打印结果，退出 0/1
+//   myabc-engine.exe [--pipe <name>] [--sid <sid>] [--model-dir <dir>] [--user-dir <dir>]
+//       -> 进管道服务端循环，真实接入 libpinyin
 
 #include <windows.h>
 #include <sddl.h>
@@ -21,7 +22,9 @@
 
 #include "config_loader.hpp"
 #include "dispatcher.hpp"
+#include "libpinyin_wrapper.hpp"
 #include "pipe_server.hpp"
+#include "session/session.hpp"
 #include "single_instance.hpp"
 
 namespace {
@@ -65,6 +68,21 @@ std::string AppDataDir() {
     return ".";
 }
 
+std::string TempDir() {
+    char buf[MAX_PATH] = {};
+    const DWORD n = ::GetTempPathA(static_cast<DWORD>(sizeof(buf)), buf);
+    return n > 0 ? std::string(buf, n) : ".";
+}
+
+myabc::engine::SessionOptions ToSessionOptions(const myabc::config::Config& cfg) {
+    myabc::engine::SessionOptions opts;
+    opts.page_size = cfg.candidates.page_size;
+    opts.page_prev_keys = cfg.candidates.page_prev_keys;
+    opts.page_next_keys = cfg.candidates.page_next_keys;
+    opts.select_keys = cfg.candidates.select_keys;
+    return opts;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -73,14 +91,27 @@ int main(int argc, char** argv) {
 
     if (HasFlag(argc, argv, "--selftest")) {
         const std::string model_dir = ArgValue(argc, argv, "--model-dir", cfg.engine.model_dir);
-        // DECISION: docs/plan/00-toolchain-and-build-plan.md §3.5 —— 真自测（nihao->你好）
-        // 依赖词库二进制，推迟到 M1（见 docs/decisions/_debt-log.md 2026-09-10）。
-        std::printf("selftest: libpinyin not wired yet (M0). model-dir=%s. exit 0\n",
-                    model_dir.c_str());
-        return 0;
+        // selftest 用临时用户目录，不污染真实 %APPDATA%\myabc\userdata。
+        const std::string user_dir = ArgValue(argc, argv, "--user-dir", TempDir() + "myabc-selftest");
+
+        myabc::engine::LibPinyinEngine engine;
+        if (!engine.Init(model_dir, user_dir)) {
+            std::printf("selftest: pinyin_init 失败（model-dir=%s）。exit 1\n", model_dir.c_str());
+            return 1;
+        }
+
+        engine.ParseAndGuess("nihao");
+        const std::string sentence = engine.CurrentSentence();
+        const bool ok = sentence.find("你好") != std::string::npos;
+
+        std::printf("selftest: sentence[0] = %s\n", sentence.c_str());
+        std::printf("selftest: %s. exit %d\n", ok ? "PASS" : "FAIL", ok ? 0 : 1);
+        return ok ? 0 : 1;
     }
 
     const std::string pipe_name = ArgValue(argc, argv, "--pipe", cfg.ipc.pipe_name_template);
+    const std::string model_dir = ArgValue(argc, argv, "--model-dir", cfg.engine.model_dir);
+    const std::string user_dir = ArgValue(argc, argv, "--user-dir", cfg.engine.user_data_dir);
 
     myabc::engine::SingleInstanceGuard guard("Local\\myabc-engine-" + sid);
     if (!guard.acquired()) {
@@ -88,12 +119,21 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    myabc::engine::Dispatcher dispatcher;
-    myabc::engine::PipeServerOptions opts;
-    opts.pipe_name = pipe_name;
-    opts.idle_exit_minutes = cfg.engine.idle_exit_minutes;
+    myabc::engine::LibPinyinEngine engine;
+    if (!engine.Init(model_dir, user_dir)) {
+        std::fprintf(stderr,
+                     "警告：libpinyin 初始化失败（model-dir=%s, user-dir=%s）。"
+                     "processKey 将始终 handled:false，hello/shutdown 仍可用。\n",
+                     model_dir.c_str(), user_dir.c_str());
+    }
 
-    std::fprintf(stderr, "myabc-engine %s 监听 %s\n", myabc::engine::Dispatcher::kEngineVersion,
-                 pipe_name.c_str());
-    return myabc::engine::RunPipeServer(opts, dispatcher);
+    myabc::engine::Dispatcher dispatcher(engine, ToSessionOptions(cfg));
+    myabc::engine::PipeServerOptions server_opts;
+    server_opts.pipe_name = pipe_name;
+    server_opts.idle_exit_minutes = cfg.engine.idle_exit_minutes;
+
+    std::fprintf(stderr, "myabc-engine %s 监听 %s（libpinyin %s）\n",
+                 myabc::engine::Dispatcher::kEngineVersion, pipe_name.c_str(),
+                 engine.ready() ? "ready" : "NOT ready");
+    return myabc::engine::RunPipeServer(server_opts, dispatcher);
 }

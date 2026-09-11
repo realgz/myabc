@@ -1,20 +1,81 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// src/domains/input-engine/backend/libpinyin_wrapper.hpp
+// src/domains/input-engine/backend/libpinyin_wrapper.hpp --- libpinyin 封装
 //
-// 依据：docs/plan/01-m0-tsf-skeleton-plan.md §3.5（M0 建空文件 + TODO，M1 填）
-//       docs/plan/02-m1-libpinyin-quanpin-plan.md
+// 依据：docs/plan/02-m1-libpinyin-quanpin-plan.md §3.1
+//       docs/decisions/pinyin-engine/20260909-adopt-libpinyin-mingw-engine-process.md
 //
-// M0 占位：不接入 libpinyin。M1 在此封装 pinyin_init / pinyin_guess_sentence /
-// pinyin_free_instance 等，向 logic 层暴露不含 glib 类型的接口（DbBackend 适配点见
-// system-overview §6）。
+// 只有本文件（+ .cpp）可以 include <pinyin.h> / glib 类型。对外只暴露 std::string /
+// std::vector，不泄漏 gchar*、pinyin_context_t 等 —— 上层（session/dispatcher）不碰 libpinyin。
+//
+// DECISION: 候选模型 —— libpinyin 的 pinyin_guess_candidates(offset) 在 offset 前调用过
+// pinyin_guess_sentence 后，会把"整句猜测"（NBEST_MATCH_CANDIDATE）连同该 offset 上的逐词候选
+// 一起塞进同一个列表（见 third_party/libpinyin/src/pinyin.cpp:_prepend_sentence_candidates）。
+// 所以候选[0] 天然就是当前最佳整句，候选[1..] 是给定位置的备选词——不需要额外拼一份"整句候选"逻辑。
+// 详见 docs/decisions/_debt-log.md 2026-09-11。
 
 #ifndef MYABC_ENGINE_LIBPINYIN_WRAPPER_HPP
 #define MYABC_ENGINE_LIBPINYIN_WRAPPER_HPP
 
+#include <cstddef>
+#include <string>
+#include <vector>
+
+// 前向声明，避免把 <pinyin.h>（连带 glib.h）泄漏进包含本头的其它文件。
+struct _pinyin_context_t;
+struct _pinyin_instance_t;
+struct _lookup_candidate_t;
+
 namespace myabc::engine {
 
-// TODO(M1): class PinyinEngine { bool Init(model_dir, user_dir); ... };
+struct CandidateItem {
+    std::string text;
+    bool is_sentence = false;   // true = 整句候选（NBEST_MATCH_CANDIDATE）
+};
+
+class LibPinyinEngine {
+public:
+    LibPinyinEngine();
+    ~LibPinyinEngine();
+
+    LibPinyinEngine(const LibPinyinEngine&) = delete;
+    LibPinyinEngine& operator=(const LibPinyinEngine&) = delete;
+
+    // model_dir：系统词库/模型目录（含 table.conf + *.bin + bigram.db）。
+    // user_dir：用户可写目录（不存在会自动创建）；本会话不调用 pinyin_save，不跨重启持久化
+    // （DECISION: docs/plan/02-...md §4 不改动清单 —— M1 不承诺跨重启自学习）。
+    bool Init(const std::string& model_dir, const std::string& user_dir);
+    bool ready() const noexcept { return instance_ != nullptr; }
+
+    // 用完整原始拼音串重新猜测（丢弃此前任何 Choose 产生的分段约束）。
+    // M1 简化：追加字母 / 退格都整串重算，不做增量约束保留——见 _debt-log 2026-09-11。
+    void ParseAndGuess(const std::string& raw_pinyin);
+
+    // 当前候选页（未分页，全量列表；分页由上层 session 按 page_size 切片）。
+    const std::vector<CandidateItem>& candidates() const noexcept { return candidates_; }
+
+    // 选择第 index 个候选（0-based，对应 candidates() 的下标）。
+    // 返回 true：整句已完全确定，out_sentence 是最终上屏文本，调用方应 Reset()。
+    // 返回 false：部分确定，candidates() 已刷新为剩余部分的候选，组字继续。
+    bool Choose(std::size_t index, std::string& out_sentence);
+
+    // 当前"最佳整句"文本（已确定前缀 + 猜测的剩余部分），供预编辑显示。
+    std::string CurrentSentence() const;
+
+    void Reset();      // 清约束 + 矩阵，回到空白态（cursor=0，parsed_len=0）
+    void Train();      // pinyin_train(instance, 0) —— 本次会话内自适应，不 save
+
+private:
+    void RecomputeCandidates();
+
+    _pinyin_context_t* context_ = nullptr;
+    _pinyin_instance_t* instance_ = nullptr;
+    std::size_t cursor_ = 0;
+    std::size_t parsed_len_ = 0;
+
+    std::vector<CandidateItem> candidates_;
+    std::vector<_lookup_candidate_t*> raw_candidates_;   // 与 candidates_ 一一对应，指针归 libpinyin 所有
+};
 
 }  // namespace myabc::engine
 
