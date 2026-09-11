@@ -35,16 +35,13 @@ struct SessionOptions {
     char number_lead_key = 'i';
     bool bihuo_enabled = true;
     std::string bihuo_data_path;   // 空 = 不加载任何笔形数据（表为空，等价功能关闭但安全）
-    // 笔形辅助码触发键（默认反引号）。Session 自己也要用它：组字态下识别"该把这个数字
-    // 追加进 raw_ 当笔形码，而不是当 select_keys 选字"，见 session.cpp DECISION。
-    char bihuo_lead_key = '`';
     // M5（plan 06 §3.1/§3.5）：拼音来源整句提交后是否调用 engine_.RememberUserInput +
     // Train（用户自学习）。只影响 UsesEngineChoose()==true 的来源（拼音）；number_currency
     // 这类原子候选来源永远不训练，见 session.cpp DECISION。
     bool learning_enabled = true;
-    // 借道这个"配置包"传给 Dispatcher（不是 Session 自己的行为，跟 number_lead_key/
-    // bihuo_lead_key 同样的路数，见 dispatcher.cpp）：每 N 次成功 commit 主动落盘一次
-    // 学习结果。0 = 关闭自动保存（只在 idle-exit/shutdown 时存）。
+    // 借道这个"配置包"传给 Dispatcher（不是 Session 自己的行为，跟 number_lead_key
+    // 同样的路数，见 dispatcher.cpp）：每 N 次成功 commit 主动落盘一次学习结果。
+    // 0 = 关闭自动保存（只在 idle-exit/shutdown 时存）。
     unsigned autosave_every_n_commits = 20;
 };
 

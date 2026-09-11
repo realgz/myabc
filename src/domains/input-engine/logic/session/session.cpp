@@ -58,12 +58,16 @@ SessionResult Session::ProcessKey(int vk, unsigned ch) {
             return SelectCandidate(0);
         }
 
-        // M4：一旦 raw_ 以 number_lead_key 开头（如 "i"），数字/小数点/负号必须能
-        // 继续拼数字本身（"i2025" 的 '2'..'5'），不能被 select_keys（"123456789"）
-        // 截胡当成选字——数字模式下只能用空格选候选[0]或 Esc 取消，见
-        // docs/decisions/_debt-log.md 2026-09-11。
+        // DECISION（用户 2026-09-11 进一步明确的完整规格，取代 M4 时"独立触发键"的
+        // 旧决策——见 docs/decisions/_debt-log.md 2026-09-11「笔形辅助码触发键」条目
+        // 的废弃说明）：数字键在按过一次空格（space_armed_）之前统一表示"继续拼数字/
+        // 笔形码"，按过一次空格之后（进入"数字选择状态"）才表示 select_keys 那种
+        // "选第几个候选"。这样"拼音/数字直接接数字"（"i2025"、"wo31"）和"数字选字"
+        // 就不再冲突，不需要额外的触发键——拼音后数字要么被下面的模式判断吃掉当输入
+        // 本身的一部分，要么（没有匹配的模式时）落到 select_keys 分支，但 select_keys
+        // 分支现在只在 space_armed_ 时生效。
         const bool in_number_mode = !raw_.empty() && raw_.front() == opts_.number_lead_key;
-        if (in_number_mode && ch != 0) {
+        if (!space_armed_ && in_number_mode && ch != 0) {
             const char c = static_cast<char>(ch);
             if ((c >= '0' && c <= '9') || c == '.' || c == '-') {
                 raw_ += c;
@@ -71,29 +75,27 @@ SessionResult Session::ProcessKey(int vk, unsigned ch) {
             }
         }
 
-        // M4：笔形辅助码（DECISION: docs/decisions/_debt-log.md 2026-09-11「笔形辅助码
-        // 触发键」）。拼音后直接接数字（"wo3"）跟 select_keys（默认全体数字，M1 起的
-        // 既有行为）无法共存，因此用独立触发键 bihuo_lead_key（默认反引号）：按一次
-        // 进入笔形输入态（"wo" -> "wo`"），之后 1-5 才追加为笔形码本身，不再落入
-        // select_keys/letter 分支。不在数字模式下才生效——数字模式的数字另有含义。
-        if (!in_number_mode && opts_.bihuo_enabled && ch != 0) {
+        // 笔形辅助码：数字 1-5 直接追加为笔形码后缀（"wo" -> "wo3" -> "wo31"），不需要
+        // 触发键，只要还没进入数字选择状态、也不是数字模式（两者用同一批字符但语义
+        // 互斥，由 raw_ 首字符已经区分）。
+        if (!space_armed_ && !in_number_mode && opts_.bihuo_enabled && ch != 0) {
             const char c = static_cast<char>(ch);
-            const bool in_bihuo_mode = raw_.find(opts_.bihuo_lead_key) != std::string::npos;
-            if (in_bihuo_mode && c >= '1' && c <= '5') {
-                raw_ += c;
-                return Recompute();
-            }
-            if (!in_bihuo_mode && c == opts_.bihuo_lead_key) {
+            if (c >= '1' && c <= '5') {
                 raw_ += c;
                 return Recompute();
             }
         }
 
-        if (ch != 0) {
+        // 数字选择状态（已按过一次空格）：数字键才表示"选第几个候选"。
+        if (space_armed_ && ch != 0) {
             const char c = static_cast<char>(ch);
             if (opts_.select_keys.find(c) != std::string::npos) {
                 return SelectCandidate(static_cast<int>(opts_.select_keys.find(c)));
             }
+        }
+
+        if (ch != 0) {
+            const char c = static_cast<char>(ch);
             if (opts_.page_prev_keys.find(c) != std::string::npos) return PageCandidates(-1);
             if (opts_.page_next_keys.find(c) != std::string::npos) return PageCandidates(+1);
             if (IsAsciiLetter(ch)) {
@@ -159,6 +161,8 @@ SessionResult Session::SelectCandidate(int index_in_page) {
     page_index_ = 0;
     space_armed_ = false;   // 换到剩余段的新候选列表，之前架的那份已经过期
     last_partial_sentence_ = sentence_text;
+    // 跟 Recompute() 同一条"只剩一个候选就自动选中"规则，见那边的 DECISION 注释。
+    if (candidates_.size() == 1) return SelectCandidate(0);
     return BuildViewResult(true);
 }
 
@@ -222,6 +226,14 @@ SessionResult Session::Recompute() {
         ResetToIdle();
         return BuildViewResult(true, true, text);
     }
+
+    // DECISION（用户 2026-09-11 明确要求，见 docs/decisions/_debt-log.md）：候选收窄到
+    // 只剩一个（通常是笔形码筛掉了所有歧义）时不用等用户按空格，直接自动选中——
+    // "只剩一个候选才自动选中"跟 VK_SPACE 分支"候选<=1 直接选中"是同一条规则，只是
+    // 这里在候选一出现就立刻应用，不用等按键。SelectCandidate(0) 走一致的
+    // engine-choose/原子候选分流逻辑，不重复实现。
+    if (candidates_.size() == 1) return SelectCandidate(0);
+
     return BuildViewResult(true);
 }
 

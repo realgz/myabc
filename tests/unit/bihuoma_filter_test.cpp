@@ -33,34 +33,27 @@ void CheckEq(const T& actual, const T& expect, const char* what) {
 int main() {
     using namespace myabc::engine;
 
-    // ---- SplitPinyinAndBihuo（lead_key='`'，见 config_defaults.hpp DECISION）--
-    const char kLead = '`';
+    // ---- SplitPinyinAndBihuo（不再需要触发键，见 config_defaults.hpp DECISION）--
     {
-        const auto r = SplitPinyinAndBihuo("wo`3", kLead);
-        CheckEq(r.pinyin_part, std::string("wo"), "Split(\"wo`3\").pinyin_part == \"wo\"");
-        CheckEq(r.bihuo_suffix, std::string("3"), "Split(\"wo`3\").bihuo_suffix == \"3\"");
+        const auto r = SplitPinyinAndBihuo("wo3");
+        CheckEq(r.pinyin_part, std::string("wo"), "Split(\"wo3\").pinyin_part == \"wo\"");
+        CheckEq(r.bihuo_suffix, std::string("3"), "Split(\"wo3\").bihuo_suffix == \"3\"");
     }
     {
-        const auto r = SplitPinyinAndBihuo("ji`31", kLead);
-        CheckEq(r.pinyin_part, std::string("ji"), "Split(\"ji`31\").pinyin_part == \"ji\"");
-        CheckEq(r.bihuo_suffix, std::string("31"), "Split(\"ji`31\").bihuo_suffix == \"31\"");
+        const auto r = SplitPinyinAndBihuo("ji31");
+        CheckEq(r.pinyin_part, std::string("ji"), "Split(\"ji31\").pinyin_part == \"ji\"");
+        CheckEq(r.bihuo_suffix, std::string("31"), "Split(\"ji31\").bihuo_suffix == \"31\"");
     }
     {
-        const auto r = SplitPinyinAndBihuo("wo`", kLead);
-        CheckEq(r.pinyin_part, std::string("wo"),
-               "Split(\"wo`\")：刚按下触发键、还没打笔形数字，拼音部分仍是\"wo\"");
-        CheckEq(r.bihuo_suffix, std::string(""), "Split(\"wo`\").bihuo_suffix 为空（不过滤）");
-    }
-    {
-        const auto r = SplitPinyinAndBihuo("nihao", kLead);
-        CheckEq(r.pinyin_part, std::string("nihao"), "Split(\"nihao\") 没有触发键时整串是拼音");
+        const auto r = SplitPinyinAndBihuo("nihao");
+        CheckEq(r.pinyin_part, std::string("nihao"), "Split(\"nihao\") 没有尾随数字时整串是拼音");
         CheckEq(r.bihuo_suffix, std::string(""), "Split(\"nihao\").bihuo_suffix 为空");
     }
     {
-        const auto r = SplitPinyinAndBihuo("`3", kLead);
-        CheckEq(r.pinyin_part, std::string("`3"),
-               "Split(\"`3\")：触发键在最前面，没有拼音前缀，不当笔形输入（plan §4 不改动清单）");
-        CheckEq(r.bihuo_suffix, std::string(""), "Split(\"`3\").bihuo_suffix 为空");
+        const auto r = SplitPinyinAndBihuo("3");
+        CheckEq(r.pinyin_part, std::string("3"),
+               "Split(\"3\")：全是数字，没有拼音前缀，不当笔形输入（plan §4 不改动清单）");
+        CheckEq(r.bihuo_suffix, std::string(""), "Split(\"3\").bihuo_suffix 为空");
     }
 
     // ---- FilterByBihuo（用合成表，不依赖真实笔顺数据）----------------------

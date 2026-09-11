@@ -62,14 +62,11 @@ struct InputConfig {
 
     // M4（plan 05 §3.2/§3.1）。
     std::string number_lead_key = "i";   // i 引导中文数字/金额，如 i2025、i1234.56
-    bool bihuo_enabled = true;           // 拼音候选后接笔形辅助码二级筛选
-    // DECISION: docs/decisions/_debt-log.md 2026-09-11「笔形辅助码触发键」——
-    // plan 05 §5 的字面示例是拼音后直接接数字（"wo3"），但 candidates.select_keys
-    // 默认就是全部数字（"123456789"，M1 起的既有行为，见 session.cpp 组字态路由），
-    // 拼音后裸数字必然先被 select_keys 当选字键吃掉，两者无法共存。改用独立触发键
-    // （反引号，不与字母/select_keys/page_keys/标点映射冲突）：先按这个键进入笔形
-    // 输入态，例如 "wo`3"，之后 1-5 才追加为笔形码，不影响原有"数字=选字"行为。
-    std::string bihuo_lead_key = "`";
+    // 拼音候选后接笔形辅助码二级筛选（如 "wo31"）。DECISION: docs/decisions/_debt-log.md
+    // 2026-09-11「笔形辅助码触发键」条目已废弃——不再需要独立触发键，select_keys
+    // （数字选字）改为只在按过一次空格之后才生效，笔形数字在此之前一直有效，两者
+    // 天然不冲突，见 session.cpp 组字态路由。
+    bool bihuo_enabled = true;
 };
 
 struct OutputConfig {

@@ -23,14 +23,12 @@ CandidateSource* SourceRegistry::Resolve(const InputContext& ctx) const {
 }
 
 SourceRegistry BuildDefaultSourceRegistry(LibPinyinEngine& engine, const BihuoTable& bihuo_table,
-                                          bool bihuo_enabled, char bihuo_lead_key,
-                                          char number_lead_key) {
+                                          bool bihuo_enabled, char number_lead_key) {
     SourceRegistry reg;
     reg.Add(std::make_unique<EnglishPassthroughSource>());
     reg.Add(std::make_unique<NumberCurrencySource>(number_lead_key));
     reg.Add(std::make_unique<PunctuationSource>());
-    reg.Add(std::make_unique<PinyinCandidateSource>(engine, bihuo_table, bihuo_enabled,
-                                                    bihuo_lead_key));
+    reg.Add(std::make_unique<PinyinCandidateSource>(engine, bihuo_table, bihuo_enabled));
     return reg;
 }
 

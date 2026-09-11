@@ -23,13 +23,18 @@ struct SplitRawResult {
     std::string bihuo_suffix;   // 空 = raw 里没有笔形码后缀
 };
 
-// raw 里最后一个 lead_key 之后的部分是笔形码后缀，之前的部分是拼音：
-// "wo`3"（lead_key='`'） -> {"wo", "3"}；"wo" -> {"wo", ""}；"`3"（没有拼音前缀）
-// 不算笔形输入，整串当拼音部分返回，bihuo_suffix 为空（笔形只做辅助筛选，不做纯笔形
-// 输入，见 plan §4）。lead_key 是独立触发键、不是拼音后直接接数字——原因见
-// docs/decisions/_debt-log.md 2026-09-11「笔形辅助码触发键」（与 select_keys 默认全
-// 数字冲突）。
-SplitRawResult SplitPinyinAndBihuo(const std::string& raw, char lead_key);
+// raw 末尾连续的 1-5 数字是笔形码后缀，之前的部分是拼音：
+// "wo31" -> {"wo", "31"}；"wo" -> {"wo", ""}；"31"（没有拼音前缀，纯数字）不算笔形
+// 输入，整串当拼音部分返回，bihuo_suffix 为空（笔形只做辅助筛选，不做纯笔形输入，
+// 见 plan §4）。
+// DECISION（docs/decisions/_debt-log.md 2026-09-11「笔形辅助码触发键」条目已废弃，
+// 见同日追加的更新条目）：M4 曾因为"拼音后裸数字"跟 select_keys（数字选字）冲突，
+// 加过一个独立触发键（反引号）。用户进一步明确要求后改为：select_keys 只在按过一次
+// 空格（Session::space_armed_）之后才生效，笔形数字（1-5）在此之前一直有效——这样
+// 两者不再冲突，不需要额外的触发键，恢复到 plan 最初"拼音直接接数字"的字面设计。
+// 这个函数本身跟 Session 的按键路由解耦，只管字符串拆分，不知道"什么时候允许追加
+// 笔形数字"这个时机判断（那是 Session::ProcessKey 的责任）。
+SplitRawResult SplitPinyinAndBihuo(const std::string& raw);
 
 // bihuo_suffix 为空时原样返回 candidates（不过滤）。非空时：候选的第一个字若在 table
 // 里查到笔形码且该码以 bihuo_suffix 为前缀则保留；查不到该字（未收录，fail-open）

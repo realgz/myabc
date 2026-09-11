@@ -9,14 +9,20 @@
 
 namespace myabc::engine {
 
-SplitRawResult SplitPinyinAndBihuo(const std::string& raw, char lead_key) {
-    const auto pos = raw.rfind(lead_key);
-    if (pos == std::string::npos || pos == 0) {
-        // 没有 lead_key，或 lead_key 在最前面（没有拼音前缀）：不当笔形输入处理，
-        // 整串按拼音处理（见 bihuo_filter.hpp 头注释、plan §4 不改动清单）。
+namespace {
+bool IsBihuoDigit(char c) { return c >= '1' && c <= '5'; }
+}  // namespace
+
+SplitRawResult SplitPinyinAndBihuo(const std::string& raw) {
+    std::size_t split = raw.size();
+    while (split > 0 && IsBihuoDigit(raw[split - 1])) --split;
+
+    if (split == 0 || split == raw.size()) {
+        // 全是笔形数字（没有拼音前缀）或根本没有尾随数字：不当笔形输入处理，整串
+        // 按拼音处理（见 bihuo_filter.hpp 头注释、plan §4 不改动清单）。
         return SplitRawResult{raw, ""};
     }
-    return SplitRawResult{raw.substr(0, pos), raw.substr(pos + 1)};
+    return SplitRawResult{raw.substr(0, split), raw.substr(split)};
 }
 
 std::vector<CandidateItem> FilterByBihuo(const std::vector<CandidateItem>& candidates,

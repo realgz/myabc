@@ -15,7 +15,7 @@ bool PinyinCandidateSource::Handles(const InputContext& ctx) const {
 }
 
 std::vector<CandidateItem> PinyinCandidateSource::Produce(const InputContext& ctx) {
-    const SplitRawResult split = SplitPinyinAndBihuo(ctx.raw, bihuo_lead_key_);
+    const SplitRawResult split = SplitPinyinAndBihuo(ctx.raw);
 
     engine_.ParseAndGuess(split.pinyin_part);
     const auto& candidates = engine_.candidates();

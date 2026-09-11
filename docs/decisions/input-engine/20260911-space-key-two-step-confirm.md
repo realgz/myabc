@@ -86,3 +86,24 @@ M1 起，空格键的行为一直是"无条件选中当前候选[0]"（`Session:
 - `docs/decisions/_debt-log.md` 2026-09-11 置顶条目（简短版，指回本文档）。
 - 回归判据：`docs/check/`（本次未走独立里程碑质检流程，纳入下一次质检报告的
   回归判据集合）。
+
+## 补充（2026-09-11，v0.1 发布后真机测试反馈）
+
+用户在另一台机器装完 v0.1 安装包后进一步明确了完整规格，扩展了本决策的范围
+（原决策只讲空格本身的两段式，没讲数字键跟笔形辅助码的关系）：
+
+> 我希望严格按照每个字都可以 拼音+笔画的形式输入，当只剩一个候选才自动选中，
+> 大于一个候选则需要按空格才进入数字选择状态
+
+即：**`select_keys`（数字选字）只在按过一次空格之后才生效**；按空格之前，数字键
+1-5 统一表示"继续追加笔形码/数字输入"（`opts_.bihuo_enabled` 时）。这个补充直接
+废弃了 M4 时期"笔形辅助码需要独立触发键（反引号）"的设计——见
+`docs/decisions/_debt-log.md` 2026-09-11 置顶条目「笔形辅助码「独立触发键」方案
+废弃」。同时明确了"候选剩 1 个自动选中"不是只在按空格时才检查，而是候选一旦
+收窄到 1 个就立即生效（`Recompute()`/`SelectCandidate` 续段分支都补了这个检查）。
+
+代码改动：`bihuo_filter.{hpp,cpp}`（`SplitPinyinAndBihuo` 去掉 `lead_key`，改回
+尾部数字识别）、`session.cpp`（组字态数字路由按 `space_armed_` 分流：未按空格时
+数字给笔形/数字模式，按过空格后数字才走 `select_keys`）、删除
+`bihuo_lead_key`（`config_defaults.hpp`/`SessionOptions`/`PinyinCandidateSource`/
+`BuildDefaultSourceRegistry`/`Dispatcher` 全部清除，不留死配置）。

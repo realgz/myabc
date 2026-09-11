@@ -29,7 +29,7 @@ Dispatcher::Dispatcher(LibPinyinEngine& engine, SessionOptions opts, UiBridge* u
     // 对象的引用（不是内容快照），赋值后 sessions_ 看到的就是新内容。
     if (!opts.bihuo_data_path.empty()) bihuo_table_.LoadFromFile(opts.bihuo_data_path);
     registry_ = BuildDefaultSourceRegistry(engine, bihuo_table_, opts.bihuo_enabled,
-                                           opts.bihuo_lead_key, opts.number_lead_key);
+                                           opts.number_lead_key);
 }
 
 Response Dispatcher::Handle(const Request& req) {

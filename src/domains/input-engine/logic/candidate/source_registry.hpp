@@ -29,12 +29,11 @@ private:
 };
 
 // number_lead_key：config.input.number_lead_key（默认 'i'），供 NumberCurrencySource 用。
-// bihuo_table/bihuo_enabled/bihuo_lead_key：config.input.bihuo_enabled/bihuo_lead_key
-// （默认 '`'，见 config_defaults.hpp DECISION）+ 已加载的笔形表，供 PinyinCandidateSource
-// 的二级筛选用（M4）。
+// bihuo_table/bihuo_enabled：已加载的笔形表 + config.input.bihuo_enabled，供
+// PinyinCandidateSource 的二级筛选用（M4；笔形数字何时生效由 Session 的
+// space_armed_ 门槛决定，不再需要独立触发键，见 bihuo_filter.hpp DECISION）。
 SourceRegistry BuildDefaultSourceRegistry(LibPinyinEngine& engine, const BihuoTable& bihuo_table,
-                                          bool bihuo_enabled, char bihuo_lead_key = '`',
-                                          char number_lead_key = 'i');
+                                          bool bihuo_enabled, char number_lead_key = 'i');
 
 }  // namespace myabc::engine
 
