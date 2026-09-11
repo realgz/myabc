@@ -1,0 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// src/domains/candidate-ui/ui/host.rc --- myabc-ui.exe 资源（任务管理器/Alt-Tab 图标）
+
+#define IDI_MYABC 1
+
+IDI_MYABC ICON "../../../../assets/icons/myabc.ico"

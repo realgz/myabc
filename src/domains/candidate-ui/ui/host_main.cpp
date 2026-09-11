@@ -8,7 +8,16 @@
 // Show/Hide 调用。引擎断线（崩溃/重启）时重连；重连前隐藏候选窗，不留悬空内容。
 // 单实例（命名互斥量），重复启动的实例发现已有实例后直接退出（见 ui_bridge.cpp 的
 // "重复拉起无害"假设）。
-
+//
+// DECISION: 必须声明 Per-Monitor-V2 DPI 感知（见 main() 开头 SetProcessDpiAwarenessContext）。
+// TIP 侧 ITfContextView::GetTextExt 拿到的光标矩形是宿主进程 DPI 感知模式下的真实物理
+// 像素坐标（现代宿主如记事本本身就是 Per-Monitor-V2）；myabc-ui.exe 是完全独立的进程，
+// 如果它自己不声明 DPI 感知，Windows 会把我们已经是"真实像素"的坐标当成 96 DPI 虚拟坐标
+// 再做一次缩放，导致候选窗定位在非 100% 缩放的显示器上明显偏离光标——这正是实测反馈的
+// "候选框和输入位置相距较远"。见 docs/decisions/_debt-log.md 2026-09-11。
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0A00   // Windows 10：DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 需要
+#endif
 #include <windows.h>
 #include <sddl.h>
 
@@ -87,6 +96,9 @@ void ApplyMessage(myabc::ui::CandidateWindow& win, const myabc::ipc::Request& re
 }  // namespace
 
 int main() {
+    // 必须在创建任何窗口之前设置——见文件头 DECISION 注释（候选窗定位偏移的根因）。
+    ::SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+
     // 单实例：命名互斥量，重复启动直接退出（引擎重复 CreateProcess 时无害）。
     const std::string sid = CurrentUserSid();
     ::CreateMutexA(nullptr, TRUE, ("Local\\myabc-ui-" + sid).c_str());

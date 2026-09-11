@@ -62,7 +62,21 @@
 - `tests/review/check_protocol_version` 独立脚本未创建（两侧共享同一份 C++ 常量定义，
   编译期已经保证一致）。
 
-## 5. 待用户在真机验证
+## 5. 用户反馈修复（2026-09-11，同日追加）
+
+用户实测 M2 后反馈两点，均已处理（详见 debt-log 置顶条目）：
+
+1. **候选窗离光标较远** —— 根因是 `myabc-ui.exe` 独立进程未声明 DPI 感知，非 100% 缩放
+   显示器下坐标被二次缩放。修复：`SetProcessDpiAwarenessContext(PER_MONITOR_AWARE_V2)`。
+2. **切换输入法时图标怪异**（一直是空白/默认图标，`assets/icons/myabc.ico` 从未真正做过）。
+   已生成图标（蓝底"拼"字，Pillow 纯代码渲染，见 assets/README.md）并编进
+   `myabc-tip.dll`（语言栏）+ `myabc-ui.exe`（任务管理器）资源，`ExtractAssociatedIcon`
+   验证过能正确提取。**提示用户**：Windows 图标缓存可能滞后，若刷新后仍是旧图标，
+   重启一次 explorer.exe 或重新登录。
+
+`out/Release/install-x64/` 已更新（同样需要重启加载过旧 DLL 的进程）。
+
+## 6. 待用户在真机验证
 
 TIP DLL / 引擎 / myabc-ui.exe 均已更新到 `out\Release\install-x64\`（注册路径不变，
 不需要重新 `--register`；**加载过旧版 DLL 的进程要重启**，本次实测环境需要重启的有

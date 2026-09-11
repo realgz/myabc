@@ -26,6 +26,7 @@ add_library(myabc-tip SHARED
     logic/mode_manager.cpp
     logic/composition_state.cpp
     "${CMAKE_CURRENT_SOURCE_DIR}/tsf-service.def"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tsf-service.rc"
 )
 
 target_include_directories(myabc-tip PRIVATE

@@ -1,6 +1,11 @@
 # 未留痕债务登记表
 
-（M2 各条追加于此，日期 2026-09-11；置顶方便查看，历史条目见下方原表）
+（M2 用户反馈修复，日期 2026-09-11；置顶方便查看，历史条目见下方原表）
+
+| 日期 | 条目 | 处理状态 |
+|---|---|---|
+| 2026-09-11 | **M2 反馈修复 1：候选窗定位偏离光标（DPI 感知缺失）**。用户实测反馈"弹出的选择框和输入位置相距比较远"。根因：`myabc-ui.exe` 是独立进程，没有声明 DPI 感知；`ITfContextView::GetTextExt` 给出的光标矩形是宿主进程（记事本，Per-Monitor-V2 感知）坐标系下的**真实物理像素**，但 `myabc-ui.exe` 默认不感知 DPI，Windows 会把这些坐标当成 96 DPI 虚拟坐标再缩放一次，在非 100% 缩放的显示器上产生明显偏移。修复：`host_main.cpp` 的 `main()` 开头调用 `SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)`（Win10 1703+ API，`#ifndef` guard 补 `_WIN32_WINNT` 宏保证声明可见）。**候选窗字号仍按 96 DPI 近似换算**（M1 R2 已记录的技术债），本次只修位置，字号在高 DPI 显示器上可能偏小，留待后续用 `GetDpiForWindow` 精确计算。 | 已修复，待用户复测 |
+| 2026-09-11 | **M2 反馈修复 2：切换输入法图标缺失/怪异**。plan 01 §3.6 早就要求 `assets/icons/myabc.ico`（16/20/24/32 多尺寸）但一直没做，`AddLanguageProfile`/`DllRegisterServer` 一直把 IconFile 指向 DLL 自身、IconIndex=0，但 DLL 里从来没有真正的图标资源，导致语言栏/切换菜单显示默认/空白图标。**生成方式**：用 Pillow + 本机自带 Microsoft YaHei Bold（`C:\Windows\Fonts\msyhbd.ttc`）纯代码渲染——蓝底圆角方块 + 白色"拼"字，16/20/24/32/48/256 六档尺寸，无第三方素材、无版权问题（见 `assets/README.md`）。新增 `src/domains/tsf-service/tsf-service.rc` 和 `src/domains/candidate-ui/ui/host.rc`，把 `assets/icons/myabc.ico` 分别编进 `myabc-tip.dll`（语言栏用）和 `myabc-ui.exe`（任务管理器/Alt-Tab 用）。用 `System.Drawing.Icon.ExtractAssociatedIcon` 验证过 tip.dll 能正确提取出 32x32 图标。**已知注意事项**：Windows 图标缓存可能滞后——如果用户在同一次登录里之前已经打开过输入法切换菜单，可能要等一次 explorer.exe 重启/重新登录才会刷新显示新图标（DLL 文件内容变了但 shell 缓存的图标句柄可能没变）。 | 已修复，待用户复测（含图标缓存提示） |
 
 | 日期 | 条目 | 处理状态 |
 |---|---|---|

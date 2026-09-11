@@ -1,0 +1,12 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// src/domains/tsf-service/tsf-service.rc --- myabc-tip.dll 资源
+//
+// 依据：docs/plan/01-m0-tsf-skeleton-plan.md §3.6（assets/icons/myabc.ico）
+//
+// 只有一个图标资源（IDI_MYABC 排在模块里的第 0 个 icon group），
+// ITfInputProcessorProfiles::AddLanguageProfile 的 IconIndex 用 0 引用它。
+
+#define IDI_MYABC 1
+
+IDI_MYABC ICON "../../../assets/icons/myabc.ico"

@@ -31,7 +31,7 @@ target_compile_definitions(myabc-candidate-ui PUBLIC UNICODE _UNICODE NOMINMAX W
 myabc_set_warnings(myabc-candidate-ui)
 
 # --- myabc-ui.exe（M2）----------------------------------------------------
-add_executable(myabc-ui ui/host_main.cpp)
+add_executable(myabc-ui ui/host_main.cpp ui/host.rc)
 target_link_libraries(myabc-ui PRIVATE myabc-candidate-ui myabc::config myabc::ipc advapi32)
 target_compile_definitions(myabc-ui PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
 myabc_set_warnings(myabc-ui)
