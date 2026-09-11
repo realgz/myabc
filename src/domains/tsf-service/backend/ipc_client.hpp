@@ -15,6 +15,7 @@
 
 #include <windows.h>
 
+#include <atomic>
 #include <cstdint>
 #include <string>
 
@@ -37,10 +38,22 @@ public:
     IpcClient(const IpcClient&) = delete;
     IpcClient& operator=(const IpcClient&) = delete;
 
-    // 连接（超时内重试；失败则尝试 CreateProcess 引擎再重试一次）。
+    // 连接（超时内重试；失败则尝试 CreateProcess 引擎再重试一次）。会阻塞调用线程
+    // 最长 cfg_.connect_timeout_ms——DECISION（真机反馈"启动/打字冻结"，见
+    // docs/decisions/_debt-log.md 2026-09-12）：这个方法本身没有删，但热路径
+    // （OnKeyDown/激活）不应该再直接调它，改用下面的 EnsureConnectedAsync()。
     bool Connect();
     void Disconnect();
     bool connected() const noexcept { return pipe_ != INVALID_HANDLE_VALUE; }
+
+    // 非阻塞版本，取代热路径里原来的 Connect()：
+    // - 已连接：立即返回 true。
+    // - 未连接、后台没有连接线程在跑：启动一个后台线程做"CreateProcess 拉起引擎 +
+    //   循环重试打开管道"（原 Connect() 的逻辑搬过去跑），立即返回 false——调用方
+    //   应该把这次按键当"引擎还没接住"降级处理（原样插入字符），不阻塞 UI 线程。
+    // - 未连接、后台线程正在跑：看它是否刚好连上了（PickUpPendingConnection），
+    //   有就采用并返回 true，没有立即返回 false，既不阻塞也不重复开线程。
+    bool EnsureConnectedAsync();
 
     // 同步一问一答，最多等 timeout_ms（默认走 cfg_.request_timeout_ms）。
     // 超时或 IO 错误：断开连接并返回 false——调用方应把这次按键当"引擎没接住"处理，
@@ -73,11 +86,28 @@ private:
     std::ptrdiff_t BoundedWrite(const void* buf, std::size_t n, DWORD timeout_ms);
     bool CallMethod(ipc::Method method, const ipc::Json& params, ipc::Response& out);
 
+    // EnsureConnectedAsync() 的后台线程实现。
+    static DWORD WINAPI ConnectThreadProc(LPVOID param);
+    void RunConnectInBackground();   // 后台线程体：LaunchEngine + 循环 TryOpenPipe，
+                                     // 成功把 HANDLE 存进 pending_pipe_（加锁），
+                                     // 全程不碰 pipe_（那是主线程独占的）。
+    bool PickUpPendingConnection();  // 主线程调用：加锁取走 pending_pipe_（如果有）
+                                     // 赋给 pipe_，从此这个 HANDLE 只由主线程碰。
+
     IpcClientConfig cfg_;
-    HANDLE pipe_ = INVALID_HANDLE_VALUE;
+    HANDLE pipe_ = INVALID_HANDLE_VALUE;   // 只由主线程读写（EnsureConnectedAsync 的
+                                           // 调用线程），后台连接线程不碰它。
     HANDLE read_event_ = nullptr;
     HANDLE write_event_ = nullptr;
     std::uint32_t next_id_ = 1;
+
+    // 异步连接状态（见 EnsureConnectedAsync 头注释）。pending_pipe_/pending_lock_
+    // 是后台线程和主线程之间唯一的共享数据，其它成员各自独占，不需要额外加锁。
+    CRITICAL_SECTION pending_lock_{};
+    HANDLE pending_pipe_ = INVALID_HANDLE_VALUE;
+    HANDLE connect_thread_ = nullptr;
+    std::atomic<bool> connect_thread_running_{false};
+    std::atomic<bool> cancel_requested_{false};   // 析构时置位，让后台线程尽快退出
 };
 
 }  // namespace myabc::tsf

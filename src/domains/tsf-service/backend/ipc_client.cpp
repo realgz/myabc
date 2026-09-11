@@ -17,9 +17,22 @@ namespace myabc::tsf {
 IpcClient::IpcClient(IpcClientConfig cfg) : cfg_(std::move(cfg)) {
     read_event_ = ::CreateEventW(nullptr, TRUE, FALSE, nullptr);
     write_event_ = ::CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    ::InitializeCriticalSection(&pending_lock_);
 }
 
 IpcClient::~IpcClient() {
+    // 后台连接线程可能还在跑（真机反馈的冷启动场景，见 EnsureConnectedAsync）；
+    // 先示意它尽快退出再等它结束，避免它退出后访问已经开始析构的 this。
+    // cancel_requested_ 让它在下一次循环检查点（≤200ms 粒度）就退出，不用真等满
+    // connect_timeout_ms。
+    cancel_requested_.store(true);
+    if (connect_thread_ != nullptr) {
+        ::WaitForSingleObject(connect_thread_, INFINITE);
+        ::CloseHandle(connect_thread_);
+    }
+    if (pending_pipe_ != INVALID_HANDLE_VALUE) ::CloseHandle(pending_pipe_);
+    ::DeleteCriticalSection(&pending_lock_);
+
     Disconnect();
     if (read_event_) ::CloseHandle(read_event_);
     if (write_event_) ::CloseHandle(write_event_);
@@ -79,6 +92,73 @@ bool IpcClient::Connect() {
 
         if (static_cast<LONG>(::GetTickCount() - deadline) >= 0) return false;
     }
+}
+
+bool IpcClient::PickUpPendingConnection() {
+    HANDLE h = INVALID_HANDLE_VALUE;
+    ::EnterCriticalSection(&pending_lock_);
+    h = pending_pipe_;
+    pending_pipe_ = INVALID_HANDLE_VALUE;
+    ::LeaveCriticalSection(&pending_lock_);
+
+    if (h == INVALID_HANDLE_VALUE) return false;
+    pipe_ = h;   // 从这一刻起这个 HANDLE 只由主线程碰，安全（后台线程已经放手）。
+    return true;
+}
+
+DWORD WINAPI IpcClient::ConnectThreadProc(LPVOID param) {
+    static_cast<IpcClient*>(param)->RunConnectInBackground();
+    return 0;
+}
+
+void IpcClient::RunConnectInBackground() {
+    const DWORD deadline = ::GetTickCount() + cfg_.connect_timeout_ms;
+    bool launched = false;
+    for (;;) {
+        if (cancel_requested_.load()) break;   // 对象正在析构，尽快退出，不再碰 cfg_/pending_*
+
+        if (TryOpenPipe()) {
+            // TryOpenPipe() 写的是 pipe_（原本给同步 Connect() 用的），但这里是后台
+            // 线程调用，绝不能让它被主线程当作"已连接"直接使用——先转移到
+            // pending_pipe_，再把 pipe_ 还原，保持"pipe_ 只由主线程碰"这个不变量。
+            HANDLE h = pipe_;
+            pipe_ = INVALID_HANDLE_VALUE;
+            ::EnterCriticalSection(&pending_lock_);
+            pending_pipe_ = h;
+            ::LeaveCriticalSection(&pending_lock_);
+            break;
+        }
+
+        if (::GetLastError() == ERROR_PIPE_BUSY) {
+            ::WaitNamedPipeW(cfg_.pipe_name.c_str(), 200);
+        } else if (!launched) {
+            launched = LaunchEngine();
+            ::Sleep(100);
+        } else {
+            ::Sleep(100);
+        }
+
+        if (static_cast<LONG>(::GetTickCount() - deadline) >= 0) break;   // 放弃，下次按键再试
+    }
+    connect_thread_running_.store(false);
+}
+
+bool IpcClient::EnsureConnectedAsync() {
+    if (connected()) return true;
+    if (PickUpPendingConnection()) return true;   // 后台线程刚好连上了，直接采用
+
+    if (!connect_thread_running_.load()) {
+        // 没有后台线程在跑（第一次尝试，或者上一次已经跑完/放弃了）：起一个新的，
+        // 立即返回——这次按键降级为"引擎还没接住"（调用方原样插入字符），不阻塞。
+        if (connect_thread_ != nullptr) {
+            ::CloseHandle(connect_thread_);
+            connect_thread_ = nullptr;
+        }
+        connect_thread_running_.store(true);
+        connect_thread_ = ::CreateThread(nullptr, 0, &IpcClient::ConnectThreadProc, this, 0, nullptr);
+        if (connect_thread_ == nullptr) connect_thread_running_.store(false);   // 开线程失败，下次再试
+    }
+    return false;   // 已经在后台跑（或刚起的），这次按键不等，不阻塞 UI 线程。
 }
 
 void IpcClient::Disconnect() {

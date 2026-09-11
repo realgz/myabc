@@ -186,12 +186,19 @@ void CMyabcTextService::ConnectEngineAndHello() {
     ic.request_timeout_ms = config_.ipc.request_timeout_ms;
 
     ipc_ = std::make_unique<IpcClient>(std::move(ic));
-    if (ipc_->Connect()) {
+    // DECISION（真机反馈"启动会冻结窗口"，见 docs/decisions/_debt-log.md
+    // 2026-09-12）：这里以前调阻塞的 Connect()（含 CreateProcess 拉起引擎 + 重试），
+    // 会卡住宿主应用激活输入法时的那次调用，冷启动慢的机器上感觉像整个窗口冻结。
+    // 改成 EnsureConnectedAsync()：立即返回，真正的连接工作在后台线程里跑，不阻塞
+    // 这次激活。若这次没连上（十有八九，因为引擎还没起来），Hello/InitSession 不
+    // 强求立刻做——OnKeyDown 每次按键都会自己 EnsureConnectedAsync()，一旦后台线程
+    // 连上了自然接上，不需要在这里等。
+    if (ipc_->EnsureConnectedAsync()) {
         const std::string ver = ipc_->Hello();
         ::OutputDebugStringA(("[myabc] engine hello -> \"" + ver + "\"\n").c_str());
         ipc_->InitSession(kSessionId);
     } else {
-        ::OutputDebugStringA("[myabc] engine hello: connect failed (non-fatal, 按需重连)\n");
+        ::OutputDebugStringA("[myabc] engine hello: connecting in background（按需重连）\n");
     }
 }
 
@@ -235,7 +242,12 @@ STDMETHODIMP CMyabcTextService::OnKeyDown(ITfContext* pic, WPARAM wParam, LPARAM
     }
     *pfEaten = TRUE;   // 不变量：接下来无论如何都不再放行原键，异常时改走"原样插入"兜底
 
-    if (!ipc_ || (!ipc_->connected() && !ipc_->Connect())) {
+    // DECISION（真机反馈"打字卡顿冻结"，见 docs/decisions/_debt-log.md 2026-09-12）：
+    // 原来这里调阻塞的 Connect()，冷启动慢时这一下按键会卡住 UI 线程最长
+    // connect_timeout_ms。改用 EnsureConnectedAsync()：没连上就立即返回 false（走
+    // 下面"原样插入字符"的降级路径，跟以前"引擎没接住"的降级路径一样），真正的
+    // 连接尝试转到后台线程，不阻塞这次按键。
+    if (!ipc_ || (!ipc_->connected() && !ipc_->EnsureConnectedAsync())) {
         HideAndResetComposition(pic);
         if (ch != L'\0') {
             auto* session = new (std::nothrow) CInsertTextEditSession(pic, tid_, std::wstring(1, ch));
