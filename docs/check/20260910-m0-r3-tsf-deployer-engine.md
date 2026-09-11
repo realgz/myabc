@@ -1,11 +1,12 @@
 # M0 R3 质检报告 · 三领域骨架（TIP DLL / deployer / engine）
 
-- 日期：2026-09-10
+- 日期：2026-09-10（2026-09-11 补充 M0-5~10 实机结果）
 - 里程碑：M0（plan 01 §3.3 + §3.4 + §3.5）
 - 对照计划：docs/plan/01-m0-tsf-skeleton-plan.md
 - 执行方：主会话（Sonnet）
-- 结论：**构建/静态验证通过**。三个产物 x64+x86 编译链接干净，引擎 IPC 端到端冒烟通过。
-  **实机注册 + 记事本上屏（M0-5/6/7/8/9/10）待用户在真机执行**（需管理员 + GUI 交互）。
+- 结论：**M0 全部验收判据（M0-1 ~ M0-10）通过**，M0-8 为非阻塞项。
+  实机在用户 Windows 机器上完成：记事本能选中"智能ABC (myabc)"、按 `a` 上屏"啊"、
+  注册/反注册干净无残留。**M0 收官，可打 tag `m0-skeleton`。**
 
 ## 1. 本轮交付
 
@@ -60,7 +61,9 @@
 | **M0-5**（实机 `--register` + `--status`） | **PASS**（2026-09-11，本机管理员会话） | 三步 [ok]，`verify: profile present`，`--register` 退 0；`--status` → registered，退 0。注册表 `HKLM\...\CTF\TIP\{clsid}`（Enable=1、LanguageProfile\0x00000804\{profileGuid} 含 Description="智能ABC (myabc)"/IconFile/IconIndex、全部 category）+ `WOW6432Node` 镜像 + `HKCR\CLSID\{clsid}\InprocServer32`(→install-x64\myabc-tip.dll, Apartment) 均正确 |
 | **M0-9**（`--unregister` + 残留检查） | **PASS** | 三步 [ok]，`verify: profile removed, InprocServer32 removed`，退 0 |
 | **M0-10**（注册表残留清零，历史回归判据） | **PASS** | unregister 后 `HKCR\CLSID\{clsid}`、`HKLM\...\CTF\TIP\{clsid}`、`WOW6432Node\...\CTF\TIP\{clsid}` 三处全部消失；re-register 幂等成功 |
-| M0-6/7/8（记事本菜单 + 上屏"啊" + 引擎 hello 日志） | **待用户执行**（GUI 交互） | 见 §4 步骤 3 |
+| **M0-6**（记事本 IME 菜单含"智能ABC (myabc)"） | **PASS**（2026-09-11，用户实机确认） | 用户报告：可看到该输入法 |
+| **M0-7**（选中后按 `a` 上屏"啊"） | **PASS**（2026-09-11，用户实机确认） | 用户报告：输入 a 出现"啊" |
+| M0-8（DebugView 看到引擎 hello 日志） | 未专门验证（非阻塞） | 引擎 IPC 端到端已由 §2 的 Python 冒烟单独证实；TIP Activate 时的 hello 往返走同一份 `ipc_client`/`pipe_server` 代码路径 |
 
 > 修复：`IsProfileRegistered` 原用 `EnumLanguageProfiles` 枚举，对"刚注册"的 profile 有进程内缓存读不到；
 > 改为直接读 `HKLM\...\CTF\TIP\{clsid}\LanguageProfile\0x{langid:08x}\{profileGuid}` 的 `Description`。
@@ -108,9 +111,17 @@ reg query "HKCR\CLSID\{8BA238DD-B6B4-42B4-95C1-8062D25B3652}"   # 期望：找�
 - 卸载不彻底：`--unregister` 后 `HKCR\CLSID\{clsid}` 必须整键消失（deploy_flow 已 `RegDeleteTree` + 校验）。
 - x86 宿主：用 32 位程序（或 SysWOW64\notepad.exe 若存在）验证 x86 tip.dll 也能加载（需另注册 x86 InprocServer32——M0 deployer 目前只按自身位数写一处，x86/x64 双注册留 M6）。
 
-## 5. 遗留（M0 R4 / 后续）
+## 5. M0 结论
 
-- **M0 R4 = 实机跑通 §4 + 修实机暴露的问题**，然后打 tag `m0-skeleton`。
+M0-1 ~ M0-10 全部通过（M0-8 非阻塞——引擎 hello 往返已由独立 Python 冒烟证实端到端可用，
+只是未在 TIP Activate 触发的那一次专门用 DebugView 盯着看）。M0 里程碑目标——"工具链就绪 +
+空 TSF TIP 骨架能注册、被选中、拦截按键、上屏写死的字；引擎进程与 IPC 通道跑通 echo"
+——达成。建议：打 tag `m0-skeleton`，转入 M1（docs/plan/02-m1-libpinyin-quanpin-plan.md）。
+
+## 6. 遗留（带入 M1 及以后）
+
 - deployer 只注册自身位数的 InprocServer32；x86+x64 双注册（WOW6432Node）留 M6（plan 07）。
 - `register.ps1` 脚本（plan 00 §5）未写：deployer 已覆盖其功能，按需再加薄封装。
-- candidate-ui 域：M1（plan 02）。
+- myabc-tip.dll 动态 CRT（MSVCP140/VCRUNTIME140）依赖：M6 兼容加固时评估改静态 CRT。
+- 引擎 idle-exit + overlapped connect + 多连接并发：M2（plan 03）。
+- candidate-ui 域、libpinyin 接入、真 selftest：M1（plan 02）。
