@@ -13,7 +13,7 @@ namespace myabc::ipc {
 
 namespace {
 // 单一映射表，MethodName / MethodFromName 都走它，避免两处漂移。
-constexpr std::array<std::pair<Method, std::string_view>, 14> kTable{{
+constexpr std::array<std::pair<Method, std::string_view>, 17> kTable{{
     {Method::kHello, "hello"},
     {Method::kInitSession, "initSession"},
     {Method::kProcessKey, "processKey"},
@@ -28,6 +28,9 @@ constexpr std::array<std::pair<Method, std::string_view>, 14> kTable{{
     {Method::kSetCaretRect, "setCaretRect"},
     {Method::kUiShow, "uiShow"},
     {Method::kUiHide, "uiHide"},
+    {Method::kUserDictExport, "userDictExport"},
+    {Method::kUserDictImport, "userDictImport"},
+    {Method::kUserDictClear, "userDictClear"},
 }};
 }  // namespace
 

@@ -23,7 +23,10 @@ namespace myabc::ipc {
 // myabc-ui.exe，候选明细改由引擎经 uiShow/uiHide 单向推给它，不再经 TIP 转发。
 // 新增 setCaretRect（TIP -> 引擎）与 uiShow/uiHide（引擎 -> myabc-ui，同一套编解码复用，
 // 只是用在不同的一条命名管道连接上）。
-inline constexpr std::uint32_t kProtocolVersion = 2;
+// v3-4：M3/M4 均未改协议结构（见 docs/decisions/_debt-log.md 2026-09-11 各自条目），版本
+// 一直停在 2。v5（M5，docs/plan/06-m5-user-dict-learning-plan.md §3.3）：新增管理类方法
+// userDictExport/userDictImport/userDictClear（非热路径，deployer CLI 用，见 dispatcher.cpp）。
+inline constexpr std::uint32_t kProtocolVersion = 5;
 
 // 长度前缀帧：uint32 小端长度 + 该长度的 UTF-8 JSON 字节。
 inline constexpr std::uint32_t kMaxFrameBytes = 1u << 20;  // 1 MiB 上限，防御坏帧
@@ -59,6 +62,10 @@ enum class Method : std::uint8_t {
     kSetCaretRect,   // TIP -> 引擎：本次组字的光标屏幕矩形
     kUiShow,         // 引擎 -> myabc-ui：候选窗内容 + 定位
     kUiHide,         // 引擎 -> myabc-ui：隐藏
+    // v5（M5，plan 06 §3.3）：用户词库管理，deployer CLI -> 引擎，非热路径。
+    kUserDictExport,   // params: {path}
+    kUserDictImport,   // params: {path}
+    kUserDictClear,    // params: {}
 };
 
 const char* MethodName(Method m) noexcept;   // 线格式名；kUnknown -> ""
@@ -71,6 +78,9 @@ inline constexpr int kBadFrame        = -1;
 inline constexpr int kBadJson         = -2;
 inline constexpr int kUnknownMethod   = -3;
 inline constexpr int kProtocolMismatch = -4;
+// 正数留给引擎业务层（不变量见上方注释）。M5：userDictExport/Import/Clear 失败
+// （文件读写失败、libpinyin 未就绪等），见 dispatcher.cpp。
+inline constexpr int kOperationFailed = 1;
 }  // namespace errc
 
 }  // namespace myabc::ipc

@@ -9,6 +9,8 @@
 
 #include <array>
 #include <cstdio>
+#include <fstream>
+#include <sstream>
 #include <string_view>
 
 namespace myabc::engine {
@@ -173,9 +175,82 @@ void LibPinyinEngine::Train() {
     ::pinyin_train(reinterpret_cast<pinyin_instance_t*>(instance_), 0);
 }
 
+void LibPinyinEngine::RememberUserInput(const std::string& phrase, int count) {
+    if (!ready() || phrase.empty()) return;
+    ::pinyin_remember_user_input(reinterpret_cast<pinyin_instance_t*>(instance_), phrase.c_str(),
+                                 count);
+}
+
 void LibPinyinEngine::Save() {
     if (!ready()) return;
     ::pinyin_save(reinterpret_cast<pinyin_context_t*>(context_));
+}
+
+bool LibPinyinEngine::ExportUserDict(const std::string& path) {
+    if (!ready()) return false;
+    auto* ctx = reinterpret_cast<pinyin_context_t*>(context_);
+
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    if (!out.is_open()) return false;
+
+    export_iterator_t* iter = ::pinyin_begin_get_phrases(ctx, USER_DICTIONARY);
+    if (iter == nullptr) return false;
+
+    while (::pinyin_iterator_has_next_phrase(iter)) {
+        gchar* phrase = nullptr;
+        gchar* pinyin = nullptr;
+        gint count = 0;
+        if (!::pinyin_iterator_get_next_phrase(iter, &phrase, &pinyin, &count)) break;
+        out << (pinyin ? pinyin : "") << '\t' << (phrase ? phrase : "") << '\t' << count << '\n';
+        if (pinyin) ::g_free(pinyin);
+        if (phrase) ::g_free(phrase);
+    }
+    ::pinyin_end_get_phrases(iter);
+    return true;
+}
+
+bool LibPinyinEngine::ImportUserDict(const std::string& path) {
+    if (!ready()) return false;
+    auto* ctx = reinterpret_cast<pinyin_context_t*>(context_);
+
+    std::ifstream in(path, std::ios::binary);
+    if (!in.is_open()) return false;
+
+    import_iterator_t* iter = ::pinyin_begin_add_phrases(ctx, USER_DICTIONARY);
+    if (iter == nullptr) return false;
+
+    std::string line;
+    bool any = false;
+    while (std::getline(in, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();   // CRLF 兼容
+        if (line.empty() || line.front() == '#') continue;
+
+        std::istringstream ss(line);
+        std::string pinyin, phrase, count_str;
+        if (!std::getline(ss, pinyin, '\t')) continue;
+        if (!std::getline(ss, phrase, '\t')) continue;
+        std::getline(ss, count_str, '\t');   // 可选，缺省时 count_str 为空
+
+        const gint count = count_str.empty() ? -1 : std::atoi(count_str.c_str());
+        if (::pinyin_iterator_add_phrase(iter, phrase.c_str(), pinyin.c_str(), count)) {
+            any = true;
+        }
+    }
+    ::pinyin_end_add_phrases(iter);
+    if (any) Save();   // 导入是显式管理操作，立即落盘（跟 ClearUserDict 同款考虑）
+    return any;
+}
+
+bool LibPinyinEngine::ClearUserDict() {
+    if (!ready()) return false;
+    auto* ctx = reinterpret_cast<pinyin_context_t*>(context_);
+    // 见 pinyin_mask_out 文档 + third_party/libpinyin/src/pinyin.cpp 内部用法：
+    // mask=PHRASE_INDEX_LIBRARY_MASK 只看 token 的库下标位，value=某个库下标的 token
+    // 模板，命中即清——这样只清 USER_DICTIONARY 这一个子库，不动系统/GBK/addon 词库。
+    const bool ok = ::pinyin_mask_out(ctx, PHRASE_INDEX_LIBRARY_MASK,
+                                      PHRASE_INDEX_MAKE_TOKEN(USER_DICTIONARY, 0));
+    if (ok) Save();   // 立即落盘：清空是显式管理操作，不应该因为进程随后崩溃而"没清成"
+    return ok;
 }
 
 }  // namespace myabc::engine

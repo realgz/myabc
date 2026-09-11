@@ -25,6 +25,7 @@
 #include "bihuoma_table.hpp"
 #include "candidate/source_registry.hpp"
 #include "json_codec.hpp"
+#include "learning_policy.hpp"
 #include "libpinyin_wrapper.hpp"
 #include "protocol.hpp"
 #include "session/session_manager.hpp"
@@ -59,10 +60,14 @@ private:
     ipc::Response HandleCancelComposition(const ipc::Request& req);
     ipc::Response HandleFocusOut(const ipc::Request& req);
     ipc::Response HandleSetCaretRect(const ipc::Request& req);
+    ipc::Response HandleUserDictExport(const ipc::Request& req);
+    ipc::Response HandleUserDictImport(const ipc::Request& req);
+    ipc::Response HandleUserDictClear(const ipc::Request& req);
 
     ipc::Response SessionResultToResponse(std::uint32_t msg_id, std::uint32_t session_id,
                                           const SessionResult& r);
     void MaybePushToUi(std::uint32_t session_id, const SessionResult& r);
+    void MaybeAutosave();   // M5：每 N 次 commit 主动 pinyin_save，见 .cpp DECISION
 
     LibPinyinEngine& engine_;
     BihuoTable bihuo_table_;   // registry_ 持有它的引用；先于 registry_ 内容确定而声明
@@ -70,6 +75,10 @@ private:
     SessionManager sessions_;
     UiBridge* ui_bridge_;
     bool should_shutdown_ = false;
+
+    // M5（plan 06 §3.2）：每 N 次成功 commit 主动 pinyin_save 一次，防 taskkill/崩溃丢失
+    // 学习结果（idle-exit/shutdown 的落盘之外的额外保险）。见 learning_policy.hpp。
+    AutosaveCounter autosave_counter_;
 
     // sessionId -> 最近一次算好、composing=true 的结果，等 setCaretRect 来了再推 UI。
     std::unordered_map<std::uint32_t, SessionResult> pending_ui_;

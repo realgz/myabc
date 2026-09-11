@@ -26,9 +26,16 @@ myabc_set_warnings(myabc-deploy-core)
 add_executable(myabc-deployer
     ui/main.cpp
     logic/deploy_flow.cpp
+    backend/engine_client.cpp
 )
-target_include_directories(myabc-deployer PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/logic")
-target_link_libraries(myabc-deployer PRIVATE myabc::deploy-core myabc::config)
+target_include_directories(myabc-deployer PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/logic"
+    "${CMAKE_CURRENT_SOURCE_DIR}/backend"
+)
+# M5（plan 06 §3.4）：--export/import/clear-userdict 经命名管道跟引擎对话，只此三个
+# 命令需要 myabc::ipc；不进 myabc-deploy-core（那个库也被 DllRegisterServer/TIP DLL
+# 用，不该多背一个 ipc 依赖）。
+target_link_libraries(myabc-deployer PRIVATE myabc::deploy-core myabc::config myabc::ipc)
 myabc_set_warnings(myabc-deployer)
 set_target_properties(myabc-deployer PROPERTIES
     LINK_FLAGS "/SUBSYSTEM:CONSOLE /ENTRY:wmainCRTStartup"

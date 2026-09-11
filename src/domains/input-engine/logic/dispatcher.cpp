@@ -22,7 +22,8 @@ std::uint32_t SessionIdOf(const Json& params) {
 Dispatcher::Dispatcher(LibPinyinEngine& engine, SessionOptions opts, UiBridge* ui_bridge)
     : engine_(engine),
       sessions_(engine, registry_, opts),   // 绑定 registry_ 的引用；内容随后在函数体里填
-      ui_bridge_(ui_bridge) {
+      ui_bridge_(ui_bridge),
+      autosave_counter_(opts.autosave_every_n_commits) {
     // bihuo_table_ 必须先加载好，registry_ 里的 PinyinCandidateSource 才拿到正确数据；
     // registry_ 是默认空构造的，这里赋值真正内容——sessions_ 持有的是 registry_ 这个
     // 对象的引用（不是内容快照），赋值后 sessions_ 看到的就是新内容。
@@ -53,6 +54,12 @@ Response Dispatcher::Handle(const Request& req) {
             return Response::Ok(req.id, Json::object());   // 无需动作
         case Method::kSetCaretRect:
             return HandleSetCaretRect(req);
+        case Method::kUserDictExport:
+            return HandleUserDictExport(req);
+        case Method::kUserDictImport:
+            return HandleUserDictImport(req);
+        case Method::kUserDictClear:
+            return HandleUserDictClear(req);
         case Method::kShutdown:
             should_shutdown_ = true;
             return Response::Ok(req.id, Json::object());
@@ -143,6 +150,29 @@ Response Dispatcher::HandleSetCaretRect(const Request& req) {
     return Response::Ok(req.id, Json::object());
 }
 
+Response Dispatcher::HandleUserDictExport(const Request& req) {
+    const std::string path = req.params.value("path", std::string());
+    if (path.empty() || !engine_.ExportUserDict(path)) {
+        return Response::Err(req.id, ipc::errc::kOperationFailed, "userDictExport failed");
+    }
+    return Response::Ok(req.id, Json::object());
+}
+
+Response Dispatcher::HandleUserDictImport(const Request& req) {
+    const std::string path = req.params.value("path", std::string());
+    if (path.empty() || !engine_.ImportUserDict(path)) {
+        return Response::Err(req.id, ipc::errc::kOperationFailed, "userDictImport failed");
+    }
+    return Response::Ok(req.id, Json::object());
+}
+
+Response Dispatcher::HandleUserDictClear(const Request& req) {
+    if (!engine_.ClearUserDict()) {
+        return Response::Err(req.id, ipc::errc::kOperationFailed, "userDictClear failed");
+    }
+    return Response::Ok(req.id, Json::object());
+}
+
 void Dispatcher::MaybePushToUi(std::uint32_t session_id, const SessionResult& r) {
     if (!r.composing) {
         pending_ui_.erase(session_id);
@@ -163,9 +193,16 @@ Response Dispatcher::SessionResultToResponse(std::uint32_t msg_id, std::uint32_t
         {"preedit", r.preedit},
         {"composing", r.composing},
     };
-    if (r.has_commit) result["commit"] = r.commit;
+    if (r.has_commit) {
+        result["commit"] = r.commit;
+        MaybeAutosave();   // M5：学习结果每 N 次 commit 落盘一次，见头文件 DECISION
+    }
 
     return Response::Ok(msg_id, std::move(result));
+}
+
+void Dispatcher::MaybeAutosave() {
+    if (autosave_counter_.OnCommit()) engine_.Save();
 }
 
 }  // namespace myabc::engine

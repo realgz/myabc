@@ -2,7 +2,11 @@
 # 依据 docs/architecture/system-overview.md §5。所有键都有编译期默认值
 # （src/config/config_defaults.hpp），本文件只列可覆盖项；删掉的键用默认值。
 #
-# M0：仅 [ipc] / [engine] / langid 生效，其余键为后续里程碑预留。
+# 现状（2026-09-11，见 docs/decisions/_debt-log.md）：真正的 TOML 解析仍未落地
+# （config_loader.cpp 目前只读编译期默认值 + {sid}/{appdata} 占位符展开，不读取这个
+# 文件本身）——下面各节列的是 config_defaults.hpp 里已经在用的字段（[candidates]/
+# [input]/[output]/[learning] 从各自里程碑起就是真实生效的默认值，不是"预留"），
+# 这份文件是"配置将来长什么样"的权威草稿，TOML loader 接上后无需改调用方代码。
 
 # zh-CN；language profile 注册用。一般不用改。
 langid = 0x0804
@@ -44,4 +48,7 @@ idle_exit_minutes = 10                   # 引擎空闲自退出
 #
 # [learning]
 # enabled = true
-# min_uses_to_promote = 2
+# autosave_every_n_commits = 20   # 每 N 次上屏主动落盘一次学习结果，防崩溃/taskkill 丢失
+# （M5 未实现 min_uses_to_promote/decay：libpinyin 自带的 pinyin_remember_user_input
+#   已经是按 count 累加的自学习模型，不需要额外的"攒够 N 次才收录"门槛或衰减逻辑，
+#   见 docs/decisions/_debt-log.md 2026-09-11。）

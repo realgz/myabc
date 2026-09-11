@@ -44,3 +44,13 @@ if(MYABC_TOOLCHAIN STREQUAL "mingw" AND TARGET myabc::engine-core)
 else()
     message(STATUS "  (跳过 bihuoma_filter_test：非 MinGW 侧)")
 endif()
+
+# learning_policy_test：AutosaveCounter，纯逻辑不依赖 libpinyin，两套工具链都能编
+# （依据 docs/plan/06-m5-user-dict-learning-plan.md §5 M5-5）。只需头文件，不链
+# engine-core（避免不必要的 libpinyin 依赖）。
+add_executable(learning_policy_test learning_policy_test.cpp)
+target_include_directories(learning_policy_test PRIVATE
+    "${CMAKE_SOURCE_DIR}/src/domains/input-engine/logic"
+)
+myabc_set_warnings(learning_policy_test)
+add_test(NAME learning_policy COMMAND learning_policy_test)

@@ -9,6 +9,7 @@
 #define MYABC_DEPLOY_FLOW_HPP
 
 #include <cstdint>
+#include <string>
 
 #include "config_defaults.hpp"
 
@@ -22,6 +23,12 @@ struct DeployParams {
 int RunRegister(const DeployParams& p);
 int RunUnregister(const DeployParams& p);
 int RunStatus(const DeployParams& p);
+
+// M5（plan 06 §3.4）：用户词库管理，经命名管道跟（已运行或临时拉起的）引擎对话。
+// path 为空时非法（export/import 必须指定文件）；clear 不需要 path。
+int RunExportUserDict(const std::string& path);
+int RunImportUserDict(const std::string& path);
+int RunClearUserDict();
 
 }  // namespace myabc::deploy
 

@@ -81,9 +81,24 @@ public:
     void Reset();      // 清约束 + 矩阵，回到空白态（cursor=0，parsed_len=0）
     void Train();      // pinyin_train(instance, 0) —— 本次会话内自适应，不 save
 
+    // M5（plan 06 §3.1/§3.2）：把刚提交的整句记成一个用户词条（不管它本来存不存在于
+    // 词库）+ 训练 bigram/unigram 调频。必须在 Reset() 之前调用——它们读取的是当前
+    // instance 的 matrix/nbest 结果，Reset() 会清空这些状态。
+    // count=-1：用 libpinyin 默认增量（见 pinyin_remember_user_input 文档）。
+    void RememberUserInput(const std::string& phrase, int count = -1);
+
     // M2（plan 03 §3.4）：引擎空闲自退出前调用一次，尽力落盘用户词库。
     // M1 起故意不在每次 commit 后调用（不承诺跨重启持久化）；这里是唯一的显式落盘点。
     void Save();
+
+    // M5（plan 06 §3.3/§3.4）：用户词库管理，只影响 USER_DICTIONARY 这个子词库
+    // （不碰系统词库/GBK/addon 等只读库）。三者都是管理操作，非热路径，不追求性能。
+    // 导出格式：每行 "拼音\t词\t频次"（plan §3.1 new_phrase_store 描述的格式）。
+    bool ExportUserDict(const std::string& path);
+    bool ImportUserDict(const std::string& path);
+    // 清空：pinyin_mask_out 整个 USER_DICTIONARY 子词库范围 + 立即落盘（管理操作，
+    // 不像 commit 训练那样等 autosave——清空后不落盘、进程崩溃就等于没清）。
+    bool ClearUserDict();
 
 private:
     void RecomputeCandidates();

@@ -77,6 +77,24 @@ struct OutputConfig {
     std::string charset = "gbk";
 };
 
+// M5（plan 06 §3.1/§3.5）：用户词库自学习。
+// DECISION: docs/decisions/_debt-log.md 2026-09-11——plan 06 §3.5 还列了
+// min_uses_to_promote（造词前先攒够 N 次再收录）和 decay_enabled（长期未用词频衰减）。
+// 未加这两个字段：libpinyin 自带的 pinyin_remember_user_input 本身就是"按 count
+// 累加"的模型，每次都记一次、count 自然爬升，效果等同于一个软性的"用得越多排得越
+// 前"，不需要在它之上再叠一层"攒够 N 次才允许创建"的硬门槛（后者需要额外一份跨
+// 重启的 (拼音,词条)->次数 计数存储，纯为一个没有验收判据要求的场景加复杂度）；
+// decay 同理，plan 自己也写"可选"，没有任何验收判据依赖它。真出现"误选一次就把
+// 干扰词顶到前排"的实际反馈，再回来加门槛，字段/存储格式届时再定。
+struct LearningConfig {
+    bool enabled = true;
+    // 每提交 N 次（有 commit 的 processKey/selectCandidate/commitComposition）主动
+    // pinyin_save 一次，防止 taskkill/崩溃丢失学习结果（plan §3.2 的"每 N 次 commit"
+    // 半，"每 M 分钟"半未实现——没有后台定时器基础设施，按提交次数触发已覆盖 M5-3
+    // 的验收场景：造词后 taskkill，见 _debt-log.md）。
+    unsigned autosave_every_n_commits = 20;
+};
+
 // 候选窗渲染最小必需项（M1：GDI 渲染，见 candidate-ui 域的 DECISION 注释）。
 // 颜色/主题/跟随光标等留到换 D2D 渲染时再加，避免为用不上的字段先建模。
 struct UiConfig {
@@ -93,6 +111,7 @@ struct Config {
     InputConfig input;
     OutputConfig output;
     UiConfig ui;
+    LearningConfig learning;
 
     std::uint16_t langid = kDefaultLangId;
 };

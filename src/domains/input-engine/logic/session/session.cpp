@@ -134,6 +134,7 @@ SessionResult Session::SelectCandidate(int index_in_page) {
     std::string sentence_text;
     const bool done = engine_.Choose(engine_idx, sentence_text);
     if (done) {
+        MaybeTrain(sentence_text);   // 必须在 ResetToIdle() 之前（见头文件注释）
         ResetToIdle();
         return BuildViewResult(true, true, sentence_text);
     }
@@ -161,11 +162,16 @@ SessionResult Session::CommitComposition() {
     std::string text;
     if (current_source_uses_engine_choose_) {
         text = last_partial_sentence_.empty() ? engine_.CurrentSentence() : last_partial_sentence_;
-        if (text.empty()) text = raw_;   // 兜底：解析失败也不吞用户输入
+        if (text.empty()) {
+            text = raw_;   // 兜底：解析失败也不吞用户输入，此时没有可训练的真实句子
+        } else {
+            MaybeTrain(text);   // 必须在 ResetToIdle() 之前（见头文件注释）
+        }
     } else {
         // 原子候选来源（如 number_currency）：engine_.CurrentSentence() 跟它无关
         // （libpinyin 从没解析过这个 raw_），直接取候选[0]，跟 Recompute() 的
-        // AutoCommit 分支同一套兜底逻辑（M5 前修复真 bug，见 _debt-log.md）。
+        // AutoCommit 分支同一套兜底逻辑（M5 前修复真 bug，见 _debt-log.md）。不训练——
+        // 这类候选不是拼音句子，pinyin_remember_user_input 无从谈起。
         text = candidates_.empty() ? raw_ : candidates_.front().text;
     }
     ResetToIdle();
@@ -221,6 +227,16 @@ SessionResult Session::BuildViewResult(bool handled, bool has_commit, std::strin
     r.has_commit = has_commit;
     r.commit = std::move(commit);
     return r;
+}
+
+void Session::MaybeTrain(const std::string& committed_text) {
+    if (!opts_.learning_enabled || committed_text.empty()) return;
+    // 顺序：先 RememberUserInput（不管这句话本来存不存在于词库，都当一个词条记住/
+    // 加计数——这是 libpinyin 真正的"造新词"入口，见 pinyin.h 文档），再 Train
+    // （bigram/unigram 调频）。两者都读当前 matrix/nbest 状态，必须在调用方
+    // ResetToIdle()（进而 engine_.Reset()）之前完成。
+    engine_.RememberUserInput(committed_text);
+    engine_.Train();
 }
 
 void Session::ResetToIdle() {

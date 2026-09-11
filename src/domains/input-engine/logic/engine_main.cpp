@@ -102,6 +102,8 @@ myabc::engine::SessionOptions ToSessionOptions(const myabc::config::Config& cfg)
     // 相对安装目录（assets/data/bihuoma.txt 随包分发）；文件不存在时 BihuoTable 静默
     // 留空，过滤退化成空操作，不影响其它候选（见 backend/bihuoma_table.hpp DECISION）。
     opts.bihuo_data_path = SelfDir() + "\\data\\bihuoma.txt";
+    opts.learning_enabled = cfg.learning.enabled;
+    opts.autosave_every_n_commits = cfg.learning.autosave_every_n_commits;
     return opts;
 }
 
@@ -159,7 +161,15 @@ int main(int argc, char** argv) {
         ArgValue(argc, argv, "--ui-exe", SelfDir() + "\\" + cfg.ui.exe_path);
     myabc::engine::UiBridge ui_bridge(ui_pipe_name, ui_exe_path);
 
-    myabc::engine::Dispatcher dispatcher(engine, ToSessionOptions(cfg), &ui_bridge);
+    myabc::engine::SessionOptions session_opts = ToSessionOptions(cfg);
+    // --autosave-every-n-commits：测试用小值覆盖（M5-3 验收要小到几次 commit 就能触发
+    // autosave，不必等默认值 20），同款做法见下面 --idle-exit-seconds。
+    const std::string autosave_arg = ArgValue(argc, argv, "--autosave-every-n-commits", "");
+    if (!autosave_arg.empty()) {
+        session_opts.autosave_every_n_commits =
+            static_cast<unsigned>(std::strtoul(autosave_arg.c_str(), nullptr, 10));
+    }
+    myabc::engine::Dispatcher dispatcher(engine, session_opts, &ui_bridge);
     myabc::engine::PipeServerOptions server_opts;
     server_opts.pipe_name = pipe_name;
     server_opts.idle_exit_minutes = cfg.engine.idle_exit_minutes;
