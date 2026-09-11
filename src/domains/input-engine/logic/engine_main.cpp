@@ -21,11 +21,13 @@
 #include <string>
 
 #include "config_loader.hpp"
+#include "crash_guard.hpp"
 #include "dispatcher.hpp"
 #include "libpinyin_wrapper.hpp"
 #include "pipe_server.hpp"
 #include "session/session.hpp"
 #include "single_instance.hpp"
+#include "ui_bridge.hpp"
 
 namespace {
 
@@ -74,6 +76,14 @@ std::string TempDir() {
     return n > 0 ? std::string(buf, n) : ".";
 }
 
+std::string SelfDir() {
+    char path[MAX_PATH] = {};
+    ::GetModuleFileNameA(nullptr, path, static_cast<DWORD>(sizeof(path)));
+    std::string p(path);
+    const auto slash = p.find_last_of("\\/");
+    return slash == std::string::npos ? "." : p.substr(0, slash);
+}
+
 myabc::engine::SessionOptions ToSessionOptions(const myabc::config::Config& cfg) {
     myabc::engine::SessionOptions opts;
     opts.page_size = cfg.candidates.page_size;
@@ -119,6 +129,8 @@ int main(int argc, char** argv) {
         return 0;
     }
 
+    myabc::engine::InstallCrashGuard(AppDataDir() + "\\myabc\\logs");
+
     myabc::engine::LibPinyinEngine engine;
     if (!engine.Init(model_dir, user_dir)) {
         std::fprintf(stderr,
@@ -127,13 +139,24 @@ int main(int argc, char** argv) {
                      model_dir.c_str(), user_dir.c_str());
     }
 
-    myabc::engine::Dispatcher dispatcher(engine, ToSessionOptions(cfg));
+    const std::string ui_pipe_name = ArgValue(argc, argv, "--ui-pipe", cfg.ipc.ui_pipe_name_template);
+    const std::string ui_exe_path =
+        ArgValue(argc, argv, "--ui-exe", SelfDir() + "\\" + cfg.ui.exe_path);
+    myabc::engine::UiBridge ui_bridge(ui_pipe_name, ui_exe_path);
+
+    myabc::engine::Dispatcher dispatcher(engine, ToSessionOptions(cfg), &ui_bridge);
     myabc::engine::PipeServerOptions server_opts;
     server_opts.pipe_name = pipe_name;
     server_opts.idle_exit_minutes = cfg.engine.idle_exit_minutes;
+    // --idle-exit-seconds：测试用极小值覆盖（M2-4 验收要求秒级，不必等分钟级默认值）。
+    const std::string idle_seconds_arg = ArgValue(argc, argv, "--idle-exit-seconds", "");
+    if (!idle_seconds_arg.empty()) {
+        server_opts.idle_exit_seconds_override =
+            static_cast<unsigned>(std::strtoul(idle_seconds_arg.c_str(), nullptr, 10));
+    }
 
-    std::fprintf(stderr, "myabc-engine %s 监听 %s（libpinyin %s）\n",
+    std::fprintf(stderr, "myabc-engine %s 监听 %s / ui %s（libpinyin %s）\n",
                  myabc::engine::Dispatcher::kEngineVersion, pipe_name.c_str(),
-                 engine.ready() ? "ready" : "NOT ready");
+                 ui_pipe_name.c_str(), engine.ready() ? "ready" : "NOT ready");
     return myabc::engine::RunPipeServer(server_opts, dispatcher);
 }

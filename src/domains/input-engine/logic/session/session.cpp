@@ -145,6 +145,7 @@ SessionResult Session::Recompute() {
 SessionResult Session::BuildViewResult(bool handled, bool has_commit, std::string commit) {
     SessionResult r;
     r.handled = handled;
+    r.composing = composing_;
     r.raw_input = raw_;
     r.preedit = last_partial_sentence_.empty() ? raw_ : last_partial_sentence_;
     r.page_size = static_cast<int>(opts_.page_size);

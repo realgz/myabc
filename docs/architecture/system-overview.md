@@ -24,7 +24,7 @@
 |---|---|---|---|---|---|
 | TSF TIP | myabc-tip.dll | MSVC v143 / CMake / vcpkg | x86 + x64 | 每个有文本输入的宿主进程（含 AppContainer） | 实现 TSF COM 接口；按键预判（本地状态机）；把需要转换的按键经 IPC 发给引擎；驱动候选窗；把 commit 文本写回文档（EditSession） |
 | 引擎进程 | myabc-engine.exe + 依赖 DLL | MinGW-w64 UCRT64 / CMake | x64（单一） | 每用户会话一个，首次连接时由 TIP 拉起，命名互斥量保证单实例 | libpinyin 全拼/简拼/混拼转换；音节切分；笔形辅助码筛选；数字/金额；GBK 扩展；用户词库自学习；命名管道服务端 |
-| 候选窗 UI | M1：静态库链入 DLL；M2：myabc-ui.exe | MSVC v143 | 跟随 TIP / 独立 | TIP 进程内（M1）到 独立 UI 进程（M2） | Direct2D/DirectWrite 分层窗绘制候选；翻页高亮状态；跟随光标定位 |
+| 候选窗 UI | M1：静态库链入 DLL；**M2：myabc-ui.exe（已落地）** | MSVC v143 | 独立进程 | 每用户会话一个，首次需要显示时由引擎拉起 | GDI 绘制候选列表（M1 起的决策，非 Direct2D，见 docs/decisions/_debt-log.md）；直接连引擎的 `myabc-ui-{sid}` 管道接收 uiShow/uiHide 单向推送，不经 TIP；跟随光标定位（TIP 经 `setCaretRect` 转交引擎，引擎随 uiShow 一起推） |
 | 部署工具 | myabc-deployer.exe | MSVC v143 | x86 + x64 | 独立运行（安装/卸载时） | ITfInputProcessorProfiles 注册、Category 注册、COM 自注册/反注册、文件布局、启用输入法配置 |
 | IPC 协议 | 头文件 + 微型序列化库 | 两套工具链都编译 | 无 | 消息结构定义与编解码，无业务逻辑 |
 
@@ -103,24 +103,39 @@ UI 线程约束：OnTestKeyDown 必须本地同步答复（状态机即可判断
 只有 OnKeyDown 需要引擎往返，使用 overlapped IO + 有界等待（默认 50ms，可配），
 超时则降级（回显原键 / 结束组字），绝不阻塞宿主 UI 线程。
 
-### 4.1 消息协议草案（PROTOCOL_VERSION = 1）
+### 4.1 消息协议草案（PROTOCOL_VERSION = 2，M2 起）
 
-请求（TIP -> 引擎）： { "v":1, "id":<u32>, "method":"<name>", "params":{...} }
-响应（引擎 -> TIP）： { "v":1, "id":<u32>, "ok":true, "result":{...} }
-错误响应： { "v":1, "id":<u32>, "ok":false, "error":{"code":<int>,"msg":"..."} }
+请求： { "v":2, "id":<u32>, "method":"<name>", "params":{...} }
+响应： { "v":2, "id":<u32>, "ok":true, "result":{...} }
+错误响应： { "v":2, "id":<u32>, "ok":false, "error":{"code":<int>,"msg":"..."} }
+
+两条独立的命名管道连接复用同一套编解码：
+- **TIP <-> 引擎**（`\\.\pipe\myabc-engine-{sid}`）：下表除 uiShow/uiHide 外的方法。
+- **引擎 -> myabc-ui**（`\\.\pipe\myabc-ui-{sid}`，M2 新增，见 §2/plan 03 §3.1）：
+  引擎单向推 uiShow/uiHide，myabc-ui 只连接、不发业务请求（候选窗点选仍走键盘 -> TIP -> 引擎，
+  M2 未做鼠标点选）。
+
+**v2 变更（对比 v1）**：`processKey`/`selectCandidate`/`pageCandidates`/`commitComposition`/
+`cancelComposition` 的 result 不再带 `candidates`/`page`——候选明细改由引擎经 uiShow 单向推给
+`myabc-ui`，不再经 TIP 转发（TIP 变薄，见 plan 03 背景）。新增 `setCaretRect`（TIP 用
+`ITfContextView::GetTextExt` 拿到光标屏幕矩形后调用，引擎收到后把"最近一次算好的候选 +
+这个矩形"一起推给 myabc-ui；`composing=false` 时引擎直接推 uiHide，不必等 setCaretRect）。
 
 方法集：
-| method | params | result |
-|---|---|---|
-| hello | clientVersion,pid,arch | engineVersion,protocol |
-| initSession | sessionId,config? | (空) |
-| processKey | sessionId,vk,ch,mods | handled,preedit,rawInput,candidates[{text,comment}],page{index,size,total},commit? |
-| selectCandidate | sessionId,index | 同 processKey（可能带 commit） |
-| pageCandidates | sessionId,delta | 同上 |
-| commitComposition | sessionId | commit |
-| cancelComposition | sessionId | (空) |
-| focusIn / focusOut | sessionId | (空) |
-| setConfig | patch{...} | applied |
+| method | 连接 | params | result |
+|---|---|---|---|
+| hello | TIP<->引擎 | clientVersion,pid,arch | engineVersion,protocol,pinyinReady |
+| initSession | TIP<->引擎 | sessionId,config? | (空) |
+| processKey | TIP<->引擎 | sessionId,vk,ch,mods | handled,preedit,composing,commit? |
+| selectCandidate | TIP<->引擎 | sessionId,index | 同 processKey |
+| pageCandidates | TIP<->引擎 | sessionId,delta | 同 processKey（composing 恒 true） |
+| commitComposition | TIP<->引擎 | sessionId | handled,commit |
+| cancelComposition | TIP<->引擎 | sessionId | handled |
+| focusIn / focusOut | TIP<->引擎 | sessionId | (空) |
+| setCaretRect | TIP<->引擎 | sessionId,x,y,w,h | (空) |
+| setConfig | TIP<->引擎 | patch{...} | applied |
+| uiShow | 引擎->myabc-ui | sessionId,caretRect{x,y,w,h},preedit,candidates[{text}],page{index,size,total} | — |
+| uiHide | 引擎->myabc-ui | sessionId | — |
 | shutdown | (空) | (空) |
 
 sessionId 由 TIP 每个文档上下文分配，隔离多窗口并发组字。

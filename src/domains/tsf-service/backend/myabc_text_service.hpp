@@ -4,12 +4,15 @@
 //
 // 依据：docs/plan/01-m0-tsf-skeleton-plan.md §3.3
 //       docs/plan/02-m1-libpinyin-quanpin-plan.md §3.5
+//       docs/plan/03-m2-engine-process-ipc-plan.md §3.3（DLL 变薄：候选窗迁出）
 //       docs/architecture/system-overview.md §7 不变量 1/3/4/5
 //
-// M1：完整 processKey 往返 + 预编辑显示（ITfComposition）+ 候选窗 + Shift 中英切换。
+// M2：完整 processKey 往返 + 预编辑显示（ITfComposition）+ Shift 中英切换；候选窗渲染
+// 已搬到独立的 myabc-ui.exe（不再链 candidate-ui/gdi32），TIP 只在应用完 ITfComposition
+// 后把光标矩形经 setCaretRect 告诉引擎，候选明细由引擎直接推给 myabc-ui（不经 TIP）。
 // DECISION: 单一 CMyabcTextService 实例同一时刻只跟踪一个"当前有焦点的 context"的组字
 // 状态（composition_/session_id_ 都是单值成员，不是按 context 建表）。多文档同时组字
-// 会互相干扰；M0/M1 的记事本单窗口验收场景不受影响，真正的按 context 隔离留 M2。
+// 会互相干扰；M0/M1/M2 的记事本单窗口验收场景不受影响，真正的按 context 隔离留后续。
 
 #ifndef MYABC_TSF_TEXT_SERVICE_HPP
 #define MYABC_TSF_TEXT_SERVICE_HPP
@@ -19,7 +22,6 @@
 
 #include <memory>
 
-#include "candidate_window.hpp"
 #include "composition.hpp"
 #include "config_defaults.hpp"
 #include "ipc_client.hpp"
@@ -70,8 +72,8 @@ private:
     void    UninitSinks();
     void    ConnectEngineAndHello();
 
-    // 把引擎 Response.result 应用到文档（起/改/结束组字）+ 候选窗，vk 用于失败时决定
-    // 是否放行原键（不变量：按键异常不影响宿主，见 plan §6 风险）。
+    // 把引擎 Response.result 应用到文档（起/改/结束组字），composing=true 时顺带把
+    // 光标矩形经 setCaretRect 告诉引擎（候选明细由引擎自己推给 myabc-ui，见类头 M2 说明）。
     void ApplyEngineResponse(ITfContext* context, const ipc::Response& resp);
     void HideAndResetComposition(ITfContext* context);
 
@@ -88,7 +90,6 @@ private:
     ModeManager mode_manager_;
     std::unique_ptr<IpcClient> ipc_;
     CompositionController composition_;
-    std::unique_ptr<myabc::ui::CandidateWindow> candidate_window_;
 };
 
 }  // namespace myabc::tsf

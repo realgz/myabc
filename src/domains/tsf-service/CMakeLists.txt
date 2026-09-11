@@ -38,9 +38,9 @@ target_link_libraries(myabc-tip PRIVATE
     myabc::config
     myabc::guids
     myabc::deploy-core  # DllRegisterServer 复用 TSF/COM 注册逻辑
-    myabc::candidate-ui
     WIL::WIL
     ole32 oleaut32 uuid advapi32   # TSF 是 COM，无 msctf.lib；CLSID/IID 来自 uuid.lib
+    # 不再链 myabc::candidate-ui / gdi32 —— 候选窗迁到独立的 myabc-ui.exe（M2，plan 03 §3.3）。
 )
 
 target_compile_definitions(myabc-tip PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)

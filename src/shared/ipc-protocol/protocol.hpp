@@ -18,7 +18,12 @@
 namespace myabc::ipc {
 
 // DECISION: docs/architecture/system-overview.md §4.1 —— 协议版本，改结构必须 +1。
-inline constexpr std::uint32_t kProtocolVersion = 1;
+// v2（M2，docs/plan/03-m2-engine-process-ipc-plan.md §3.2）：processKey 系方法的响应不
+// 再带候选明细/翻页信息（{handled,preedit,composing,commit?} 即可）——候选窗搬到独立的
+// myabc-ui.exe，候选明细改由引擎经 uiShow/uiHide 单向推给它，不再经 TIP 转发。
+// 新增 setCaretRect（TIP -> 引擎）与 uiShow/uiHide（引擎 -> myabc-ui，同一套编解码复用，
+// 只是用在不同的一条命名管道连接上）。
+inline constexpr std::uint32_t kProtocolVersion = 2;
 
 // 长度前缀帧：uint32 小端长度 + 该长度的 UTF-8 JSON 字节。
 inline constexpr std::uint32_t kMaxFrameBytes = 1u << 20;  // 1 MiB 上限，防御坏帧
@@ -36,8 +41,7 @@ inline constexpr const char* kErrCode = "code";
 inline constexpr const char* kErrMsg  = "msg";
 }  // namespace key
 
-// 方法集（system-overview §4.1）。M0 只实现 hello / processKey 的编解码，
-// 其余保留枚举位，编解码遇到未知 method 归为 kUnknown。
+// 方法集（system-overview §4.1）。编解码遇到未知 method 归为 kUnknown。
 enum class Method : std::uint8_t {
     kUnknown = 0,
     kHello,
@@ -51,6 +55,10 @@ enum class Method : std::uint8_t {
     kFocusOut,
     kSetConfig,
     kShutdown,
+    // v2（M2）
+    kSetCaretRect,   // TIP -> 引擎：本次组字的光标屏幕矩形
+    kUiShow,         // 引擎 -> myabc-ui：候选窗内容 + 定位
+    kUiHide,         // 引擎 -> myabc-ui：隐藏
 };
 
 const char* MethodName(Method m) noexcept;   // 线格式名；kUnknown -> ""

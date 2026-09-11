@@ -2,6 +2,7 @@
 //
 // src/domains/input-engine/logic/dispatcher.cpp
 // 依据：docs/plan/02-m1-libpinyin-quanpin-plan.md §3.3
+//       docs/plan/03-m2-engine-process-ipc-plan.md §3.2
 
 #include "dispatcher.hpp"
 
@@ -18,10 +19,11 @@ std::uint32_t SessionIdOf(const Json& params) {
 }
 }  // namespace
 
-Dispatcher::Dispatcher(LibPinyinEngine& engine, SessionOptions opts)
+Dispatcher::Dispatcher(LibPinyinEngine& engine, SessionOptions opts, UiBridge* ui_bridge)
     : engine_(engine),
       registry_(BuildDefaultSourceRegistry(engine)),
-      sessions_(engine, registry_, std::move(opts)) {}
+      sessions_(engine, registry_, std::move(opts)),
+      ui_bridge_(ui_bridge) {}
 
 Response Dispatcher::Handle(const Request& req) {
     switch (req.method) {
@@ -42,7 +44,9 @@ Response Dispatcher::Handle(const Request& req) {
         case Method::kFocusOut:
             return HandleFocusOut(req);
         case Method::kFocusIn:
-            return Response::Ok(req.id, Json::object());   // M1：无需动作
+            return Response::Ok(req.id, Json::object());   // 无需动作
+        case Method::kSetCaretRect:
+            return HandleSetCaretRect(req);
         case Method::kShutdown:
             should_shutdown_ = true;
             return Response::Ok(req.id, Json::object());
@@ -51,7 +55,7 @@ Response Dispatcher::Handle(const Request& req) {
                                  "unknown method: " + req.method_raw);
         default:
             return Response::Err(req.id, ipc::errc::kUnknownMethod,
-                                 std::string("method not implemented in M1: ") +
+                                 std::string("method not implemented: ") +
                                      ipc::MethodName(req.method));
     }
 }
@@ -74,29 +78,33 @@ Response Dispatcher::HandleProcessKey(const Request& req) {
     Session& s = sessions_.GetOrCreate(id);
     const int vk = req.params.value("vk", 0);
     const unsigned ch = req.params.value("ch", 0u);
-    return SessionResultToResponse(req.id, s.ProcessKey(vk, ch));
+    return SessionResultToResponse(req.id, id, s.ProcessKey(vk, ch));
 }
 
 Response Dispatcher::HandleSelectCandidate(const Request& req) {
-    Session& s = sessions_.GetOrCreate(SessionIdOf(req.params));
+    const auto id = SessionIdOf(req.params);
+    Session& s = sessions_.GetOrCreate(id);
     const int index = req.params.value("index", 0);
-    return SessionResultToResponse(req.id, s.SelectCandidate(index));
+    return SessionResultToResponse(req.id, id, s.SelectCandidate(index));
 }
 
 Response Dispatcher::HandlePageCandidates(const Request& req) {
-    Session& s = sessions_.GetOrCreate(SessionIdOf(req.params));
+    const auto id = SessionIdOf(req.params);
+    Session& s = sessions_.GetOrCreate(id);
     const int delta = req.params.value("delta", 0);
-    return SessionResultToResponse(req.id, s.PageCandidates(delta));
+    return SessionResultToResponse(req.id, id, s.PageCandidates(delta));
 }
 
 Response Dispatcher::HandleCommitComposition(const Request& req) {
-    Session& s = sessions_.GetOrCreate(SessionIdOf(req.params));
-    return SessionResultToResponse(req.id, s.CommitComposition());
+    const auto id = SessionIdOf(req.params);
+    Session& s = sessions_.GetOrCreate(id);
+    return SessionResultToResponse(req.id, id, s.CommitComposition());
 }
 
 Response Dispatcher::HandleCancelComposition(const Request& req) {
-    Session& s = sessions_.GetOrCreate(SessionIdOf(req.params));
-    return SessionResultToResponse(req.id, s.CancelComposition());
+    const auto id = SessionIdOf(req.params);
+    Session& s = sessions_.GetOrCreate(id);
+    return SessionResultToResponse(req.id, id, s.CancelComposition());
 }
 
 Response Dispatcher::HandleFocusOut(const Request& req) {
@@ -104,25 +112,54 @@ Response Dispatcher::HandleFocusOut(const Request& req) {
     Session& s = sessions_.GetOrCreate(id);
     s.FocusOut();
     sessions_.Remove(id);
+    pending_ui_.erase(id);
+    if (ui_bridge_ != nullptr) ui_bridge_->PushHide(id);
     return Response::Ok(req.id, Json::object());
 }
 
-Response Dispatcher::SessionResultToResponse(std::uint32_t id, const SessionResult& r) const {
-    Json candidates = Json::array();
-    for (const auto& c : r.candidates) {
-        candidates.push_back(Json{{"text", c.text}, {"comment", ""}});
-    }
+Response Dispatcher::HandleSetCaretRect(const Request& req) {
+    const auto id = SessionIdOf(req.params);
+    const auto it = pending_ui_.find(id);
+    if (it != pending_ui_.end() && ui_bridge_ != nullptr) {
+        CaretRect rect;
+        rect.x = req.params.value("x", 0);
+        rect.y = req.params.value("y", 0);
+        rect.w = req.params.value("w", 0);
+        rect.h = req.params.value("h", 0);
 
+        std::vector<CandidateItem> items;
+        items.reserve(it->second.candidates.size());
+        for (const auto& c : it->second.candidates) items.push_back(CandidateItem{c.text, false});
+
+        ui_bridge_->PushShow(id, rect, it->second.preedit, items, it->second.page_index,
+                            it->second.page_size, it->second.page_total);
+    }
+    return Response::Ok(req.id, Json::object());
+}
+
+void Dispatcher::MaybePushToUi(std::uint32_t session_id, const SessionResult& r) {
+    if (!r.composing) {
+        pending_ui_.erase(session_id);
+        if (ui_bridge_ != nullptr) ui_bridge_->PushHide(session_id);
+        return;
+    }
+    // composing=true：留着等 setCaretRect（TIP 应用完 ITfComposition 后才知道矩形）。
+    pending_ui_[session_id] = r;
+}
+
+Response Dispatcher::SessionResultToResponse(std::uint32_t msg_id, std::uint32_t session_id,
+                                             const SessionResult& r) {
+    MaybePushToUi(session_id, r);
+
+    // v2：不再把 candidates/page 塞进 TIP 的响应——那是 uiShow 的活。
     Json result{
         {"handled", r.handled},
         {"preedit", r.preedit},
-        {"rawInput", r.raw_input},
-        {"candidates", candidates},
-        {"page", Json{{"index", r.page_index}, {"size", r.page_size}, {"total", r.page_total}}},
+        {"composing", r.composing},
     };
     if (r.has_commit) result["commit"] = r.commit;
 
-    return Response::Ok(id, std::move(result));
+    return Response::Ok(msg_id, std::move(result));
 }
 
 }  // namespace myabc::engine

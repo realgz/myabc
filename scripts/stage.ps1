@@ -48,6 +48,9 @@ foreach ($a in $Arch) {
     Copy-IfExists (Join-Path $msvcBin 'myabc-tip.dll') $archDir
     Copy-IfExists (Join-Path $msvcBin 'myabc-tip.pdb') $archDir
     Copy-IfExists (Join-Path $msvcBin 'myabc-deployer.exe') $archDir
+    # M2：候选窗独立进程，引擎（x64 单一）按需拉起；只 x64 侧有意义，但 x86 preset 顺带
+    # 产出也一起拷，不影响正确性。
+    Copy-IfExists (Join-Path $msvcBin 'myabc-ui.exe') $archDir
 }
 
 # --- 引擎侧：myabc-engine.exe + libpinyin.dll + 词库数据 + MinGW 运行时 --

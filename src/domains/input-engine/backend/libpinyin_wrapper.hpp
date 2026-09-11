@@ -65,6 +65,10 @@ public:
     void Reset();      // 清约束 + 矩阵，回到空白态（cursor=0，parsed_len=0）
     void Train();      // pinyin_train(instance, 0) —— 本次会话内自适应，不 save
 
+    // M2（plan 03 §3.4）：引擎空闲自退出前调用一次，尽力落盘用户词库。
+    // M1 起故意不在每次 commit 后调用（不承诺跨重启持久化）；这里是唯一的显式落盘点。
+    void Save();
+
 private:
     void RecomputeCandidates();
 

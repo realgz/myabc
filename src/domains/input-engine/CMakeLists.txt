@@ -28,6 +28,8 @@ add_library(myabc-engine-core STATIC
     backend/pipe_server.cpp
     backend/single_instance.cpp
     backend/libpinyin_wrapper.cpp
+    backend/ui_bridge.cpp
+    backend/crash_guard.cpp
 )
 add_library(myabc::engine-core ALIAS myabc-engine-core)
 
@@ -42,7 +44,7 @@ target_link_libraries(myabc-engine-core PUBLIC
     LibPinyin::LibPinyin
     PkgConfig::GLIB2
 )
-target_link_libraries(myabc-engine-core PRIVATE advapi32)
+target_link_libraries(myabc-engine-core PRIVATE advapi32 dbghelp)
 
 myabc_set_warnings(myabc-engine-core)
 

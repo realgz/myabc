@@ -4,23 +4,30 @@
 //
 // 依据：docs/plan/01-m0-tsf-skeleton-plan.md §3.5
 //       docs/plan/02-m1-libpinyin-quanpin-plan.md §3.3
+//       docs/plan/03-m2-engine-process-ipc-plan.md §3.2（协议 v2，setCaretRect/uiShow/uiHide）
 //       docs/architecture/system-overview.md §4.1
 //
-// 纯逻辑层：不碰管道 / windows.h，输入 ipc::Request，输出 ipc::Response。
-// M1：initSession/processKey/selectCandidate/pageCandidates/commitComposition/
-//     cancelComposition/focusIn/focusOut 全部实现；setConfig 仍是 M1 未实现方法。
+// 纯逻辑层：不碰命名管道细节（UiBridge 除外——它是"推给另一条连接"，Dispatcher 只负责
+// 决定何时推、推什么，实际写管道在 UiBridge 内部）。
+//
+// v2：processKey 系方法的响应只剩 {handled,preedit,composing,commit?}——候选明细不再
+// 经这条连接回 TIP，而是 MaybePushToUi() 存一份"待推"结果，等 setCaretRect 到达后
+// （TIP 应用完 ITfComposition、算出光标矩形之后才会调）配上矩形一起经 UiBridge 推给
+// myabc-ui；composing=false 时立刻推 uiHide，不必等 setCaretRect。
 
 #ifndef MYABC_ENGINE_DISPATCHER_HPP
 #define MYABC_ENGINE_DISPATCHER_HPP
 
 #include <cstdint>
 #include <memory>
+#include <unordered_map>
 
 #include "candidate/source_registry.hpp"
 #include "json_codec.hpp"
 #include "libpinyin_wrapper.hpp"
 #include "protocol.hpp"
 #include "session/session_manager.hpp"
+#include "ui_bridge.hpp"
 
 namespace myabc::engine {
 
@@ -29,13 +36,17 @@ public:
     // engine 即使 Init() 失败（!engine.ready()）也必须是个有效对象——LibPinyinEngine 的
     // 各方法在未就绪时全部安全地空操作/返回空结果，因此 processKey 等会自然退化为
     // handled:false，不崩溃，等价 M0 占位行为。
-    Dispatcher(LibPinyinEngine& engine, SessionOptions opts);
+    // ui_bridge 可空（测试/--selftest 不需要候选窗）。
+    Dispatcher(LibPinyinEngine& engine, SessionOptions opts, UiBridge* ui_bridge = nullptr);
 
     ipc::Response Handle(const ipc::Request& req);
 
     bool should_shutdown() const noexcept { return should_shutdown_; }
 
-    static constexpr const char* kEngineVersion = "0.1.0-m1";
+    // 引擎退出前（空闲自退出 / shutdown 方法 / 主循环自然结束）调用一次，尽力落盘。
+    void SaveBeforeExit() { engine_.Save(); }
+
+    static constexpr const char* kEngineVersion = "0.2.0-m2";
 
 private:
     ipc::Response HandleHello(const ipc::Request& req);
@@ -46,13 +57,20 @@ private:
     ipc::Response HandleCommitComposition(const ipc::Request& req);
     ipc::Response HandleCancelComposition(const ipc::Request& req);
     ipc::Response HandleFocusOut(const ipc::Request& req);
+    ipc::Response HandleSetCaretRect(const ipc::Request& req);
 
-    ipc::Response SessionResultToResponse(std::uint32_t id, const SessionResult& r) const;
+    ipc::Response SessionResultToResponse(std::uint32_t msg_id, std::uint32_t session_id,
+                                          const SessionResult& r);
+    void MaybePushToUi(std::uint32_t session_id, const SessionResult& r);
 
     LibPinyinEngine& engine_;
     SourceRegistry registry_;
     SessionManager sessions_;
+    UiBridge* ui_bridge_;
     bool should_shutdown_ = false;
+
+    // sessionId -> 最近一次算好、composing=true 的结果，等 setCaretRect 来了再推 UI。
+    std::unordered_map<std::uint32_t, SessionResult> pending_ui_;
 };
 
 }  // namespace myabc::engine

@@ -38,9 +38,11 @@ struct CandidateView {
 
 struct SessionResult {
     bool handled = false;
+    bool composing = false;   // v2: TIP 靠这个字段判断要不要维持 ITfComposition（不再靠
+                              // candidates 是否为空推断——v2 起 candidates 不给 TIP 了）
     std::string preedit;
     std::string raw_input;
-    std::vector<CandidateView> candidates;   // 当前页
+    std::vector<CandidateView> candidates;   // 当前页；v2 起只经 uiShow 推给 myabc-ui
     int page_index = 0;
     int page_size = 0;
     int page_total = 0;

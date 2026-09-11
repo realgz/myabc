@@ -220,4 +220,11 @@ bool IpcClient::FocusOut(std::uint32_t session_id) {
     return CallMethod(ipc::Method::kFocusOut, ipc::Json{{"sessionId", session_id}}, out);
 }
 
+bool IpcClient::SetCaretRect(std::uint32_t session_id, int x, int y, int w, int h) {
+    ipc::Response out;
+    return CallMethod(ipc::Method::kSetCaretRect,
+                      ipc::Json{{"sessionId", session_id}, {"x", x}, {"y", y}, {"w", w}, {"h", h}},
+                      out);
+}
+
 }  // namespace myabc::tsf

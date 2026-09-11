@@ -26,6 +26,8 @@ inline constexpr std::uint16_t kDefaultLangId = 0x0804;
 struct IpcConfig {
     // {sid} 占位符由 config_loader 在运行期替换为当前用户 SID。
     std::string pipe_name_template = R"(\\.\pipe\myabc-engine-{sid})";
+    // M2（plan 03 §3.2）：引擎 -> myabc-ui 的单向推送通道，独立命名管道。
+    std::string ui_pipe_name_template = R"(\\.\pipe\myabc-ui-{sid})";
     std::uint32_t connect_timeout_ms = 2000;   // 首次连接（含拉起引擎）总超时
     std::uint32_t request_timeout_ms = 50;     // 单次按键请求超时，超时降级
     // 重试退避序列（毫秒）。空 => 不退避直接失败。
@@ -65,6 +67,8 @@ struct OutputConfig {
 struct UiConfig {
     std::string font = "Microsoft YaHei UI";
     unsigned font_size_pt = 12;
+    // M2：myabc-ui.exe 相对安装目录解析（同目录约定，见 engine.exe_path 同款注释）。
+    std::string exe_path = "myabc-ui.exe";
 };
 
 struct Config {

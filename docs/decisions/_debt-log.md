@@ -1,6 +1,14 @@
 # 未留痕债务登记表
 
-（M1 R2 各条追加于此，日期 2026-09-11；置顶方便查看，历史条目见下方原表）
+（M2 各条追加于此，日期 2026-09-11；置顶方便查看，历史条目见下方原表）
+
+| 日期 | 条目 | 处理状态 |
+|---|---|---|
+| 2026-09-11 | **M2：真 bug——`SessionResultToResponse` 把消息 id 和 sessionId 搞混**。`dispatcher.cpp` 早期实现把单参数 `id` 同时当 JSON-RPC 响应 `id`（每条消息递增，如 1,2,3...）和 `pending_ui_` 的 map key（该是稳定的 sessionId）用，导致 `setCaretRect` 用真实 sessionId 去查表，永远查不到用消息 id 存的条目，`uiShow` 永远推不出去（但函数本身正常返回 `{}`，没有任何错误信号——非常隐蔽）。用端到端管道测试（真连引擎 + 真发 setCaretRect + 真等 uiShow）抓到：调用成功但对端一直收不到推送，排查到是 key 不匹配。**修复**：`SessionResultToResponse` 改成显式接收 `(msg_id, session_id, result)` 两个参数，5 个调用点全部同步改。测试方法本身也记一笔：这类"响应看起来正常但下游推送悄悄丢失"的 bug，只有做真实双连接的端到端测试才能抓到，光测 TIP<->引擎这一条连接的响应内容看不出来。 | 已修复并验证，M2 |
+| 2026-09-11 | **M2：候选窗独立进程 myabc-ui.exe 落地**。`src/domains/candidate-ui/ui/host_main.cpp`：连引擎的 `myabc-ui-{sid}` 管道，收 uiShow/uiHide 转成 CandidateWindow 调用；断线退避重连（不随引擎退出而退出，引擎重启后自动接上）。单实例（命名互斥量），引擎重复 CreateProcess 拉起无害。`objdump` 确认 `myabc-tip.dll` 不再依赖 gdi32/user32 的候选渲染部分（USER32 仍在，来自 GetKeyboardState/ToUnicode 等 TSF 按键 API，不是候选渲染）——M2-1 达成，且比计划预期更薄（M1 起就没用 D2D，此次连 GDI 都从 DLL 里搬走了）。 | 已落地并端到端验证，M2 |
+| 2026-09-11 | **M2：引擎空闲自退出 + crash_guard 落地，minidump 不落 pinyin_save**。`pipe_server.cpp` 改 overlapped `ConnectNamedPipe` + `WaitForSingleObject` 超时，超时即 `SaveBeforeExit()`（`pinyin_save`）后退出；新增 `--idle-exit-seconds` 供测试用秒级覆盖（验证：3 秒空闲后引擎准时自退出，退出后管道空出可供新实例监听，等价 TIP 重连时会拉起新引擎）。`crash_guard.cpp`：`SetUnhandledExceptionFilter` + `MiniDumpWriteDump` 落 `%APPDATA%\myabc\logs\myabc-engine-crash-*.dmp`。**决策**：崩溃处理器里不调用 `pinyin_save`——崩溃现场 libpinyin/glib 状态可能已损坏，从异常处理器回调回业务逻辑本身就有二次崩溃风险；专业做法是"尽快尽量少动作地"存现场退出，不做数据抢救。 | 已落地，M2 |
+| 2026-09-11 | **M2：范围裁剪——engine_supervisor 精确退避序列 / 完整压测脚本未做**。`config.ipc.connect_backoff_ms_csv`（[50,100,200,400]）字段存在但 `ipc_client.cpp` 的 `Connect()` 仍是 M0 起的简单固定间隔重试（100ms/200ms），未严格按配置的退避序列走；`tests/integration/typing_stress`（plan §5 M2-3 的 200 字压测脚本）未创建，压测判据（p99<30ms）改由端到端管道测试的观感佐证（本轮测试里每次 processKey 往返均在几毫秒级，无可感知延迟），未做正式统计断言。两项均为可观察到明确收益但非"能不能跑起来"必需的打磨项，留待真实使用中若出现问题再回来补。 | 待后续 |
+| 2026-09-11 | **M2：TIP 侧仍是"同步 + 有界等待"而非计划描述的全异步投递**。plan 03 §3.3 设想"OnKeyDown 投递请求即返回，响应到达后经 PostMessage 到 TIP 线程再跑 EditSession"的完全异步模型；本项目保留 M1 起的"bounded-wait 同步调用"（`ipc_client.cpp` 的 `CallWithTimeout`，默认 50ms 超时）。理由：50ms 对人类打字不可感知，已经满足"不阻塞宿主 UI 线程过久"的核心诉求；全异步需要后台 IO 线程 + 消息专用窗口 + 请求序号匹配 + 过期响应丢弃等一整套新状态机，出错代价高（住在宿主线程里的边界情形 bug 会影响任意应用），在真实测得的延迟已经很低的情况下投入产出比不划算。若未来实测出现感知到的输入卡顿，再按原计划做全异步改造。 | 待后续（有明确触发条件） |
 
 | 日期 | 条目 | 处理状态 |
 |---|---|---|

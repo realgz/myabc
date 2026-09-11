@@ -131,4 +131,9 @@ void LibPinyinEngine::Train() {
     ::pinyin_train(reinterpret_cast<pinyin_instance_t*>(instance_), 0);
 }
 
+void LibPinyinEngine::Save() {
+    if (!ready()) return;
+    ::pinyin_save(reinterpret_cast<pinyin_context_t*>(context_));
+}
+
 }  // namespace myabc::engine

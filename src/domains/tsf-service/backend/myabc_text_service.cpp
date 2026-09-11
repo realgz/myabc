@@ -127,9 +127,6 @@ STDMETHODIMP CMyabcTextService::ActivateEx(ITfThreadMgr* ptim, TfClientId tid, D
         return hr;
     }
 
-    candidate_window_ = std::make_unique<myabc::ui::CandidateWindow>();
-    candidate_window_->Create(Widen(config_.ui.font), config_.ui.font_size_pt);
-
     ConnectEngineAndHello();
     return S_OK;
 }
@@ -139,10 +136,6 @@ STDMETHODIMP CMyabcTextService::Deactivate() {
     if (ipc_) ipc_->FocusOut(kSessionId);
     ipc_.reset();
     composition_.OnExternallyTerminated();   // 防御性清本地指针；文档侧由框架负责终止
-    if (candidate_window_) {
-        candidate_window_->Destroy();
-        candidate_window_.reset();
-    }
     if (thread_mgr_) {
         thread_mgr_->Release();
         thread_mgr_ = nullptr;
@@ -210,8 +203,10 @@ STDMETHODIMP CMyabcTextService::OnPushContext(ITfContext*) { return S_OK; }
 STDMETHODIMP CMyabcTextService::OnPopContext(ITfContext*) { return S_OK; }
 
 // ---- ITfKeyEventSink ---------------------------------------------------
-STDMETHODIMP CMyabcTextService::OnSetFocus(BOOL fForeground) {
-    if (!fForeground && candidate_window_) candidate_window_->Hide();
+STDMETHODIMP CMyabcTextService::OnSetFocus(BOOL /*fForeground*/) {
+    // M2：候选窗不在 TIP 进程内了，失焦时的隐藏由引擎在下一次 composing=false 时
+    // 经 uiHide 处理（或干脆维持显示直到用户结束组字——候选窗本就该跟着 caret 走，
+    // 焦点还在同一光标位置时没必要强制隐藏）。
     return S_OK;
 }
 
@@ -306,7 +301,9 @@ STDMETHODIMP CMyabcTextService::OnPreservedKey(ITfContext*, REFGUID, BOOL* pfEat
 STDMETHODIMP CMyabcTextService::OnCompositionTerminated(TfEditCookie /*ec*/,
                                                         ITfComposition* /*composition*/) {
     composition_.OnExternallyTerminated();
-    if (candidate_window_) candidate_window_->Hide();
+    // 候选窗隐藏由引擎在下一次 processKey/... 算出 composing=false 时经 uiHide 处理；
+    // 这里只是外部中止（如切焦点）——引擎侧状态留到下次交互再由 cancelComposition
+    // 之类的调用收敛，不在这里额外发请求（避免在任意回调里发起 IPC）。
     return S_OK;
 }
 
@@ -315,7 +312,6 @@ void CMyabcTextService::HideAndResetComposition(ITfContext* context) {
     if (composition_.active() && context != nullptr) {
         composition_.Cancel(context, tid_);
     }
-    if (candidate_window_) candidate_window_->Hide();
 }
 
 void CMyabcTextService::ApplyEngineResponse(ITfContext* context, const ipc::Response& resp) {
@@ -324,30 +320,21 @@ void CMyabcTextService::ApplyEngineResponse(ITfContext* context, const ipc::Resp
 
     if (state.has_commit) {
         composition_.EndWithText(context, tid_, state.commit_text);
-        if (candidate_window_) candidate_window_->Hide();
         return;
     }
 
     if (state.composing) {
         RECT caret{};
         composition_.StartOrUpdate(context, tid_, this, state.preedit, &caret);
-
-        if (candidate_window_) {
-            if (!state.candidates.empty()) {
-                myabc::ui::CandidateViewModel vm;
-                vm.preedit = state.preedit;
-                for (const auto& c : state.candidates) vm.items.push_back(c.text);
-                vm.page_index = state.page_index;
-                vm.page_total = state.page_total;
-                candidate_window_->Show(caret, vm);
-            } else {
-                candidate_window_->Hide();
-            }
+        if (ipc_) {
+            ipc_->SetCaretRect(kSessionId, caret.left, caret.top, caret.right - caret.left,
+                              caret.bottom - caret.top);
         }
         return;
     }
 
     // handled=true 但既没 commit 也不再 composing（ESC 取消 / 退格清空到底）。
+    // 引擎已经在算出 composing=false 的同一时刻自己推了 uiHide，这里只用管本地 TSF 状态。
     HideAndResetComposition(context);
 }
 

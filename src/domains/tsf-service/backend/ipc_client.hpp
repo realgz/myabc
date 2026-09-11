@@ -61,6 +61,11 @@ public:
     bool CancelComposition(std::uint32_t session_id, ipc::Response& out);
     bool FocusOut(std::uint32_t session_id);
 
+    // M2（plan 03 §3.2）：composing=true 时，TIP 应用完 ITfComposition 后把光标屏幕矩形
+    // 告诉引擎——引擎据此把候选明细 + 这个矩形一起推给 myabc-ui（见 uiShow）。
+    // 单向语义强，失败无需特殊处理（下次按键会再报一次新矩形）。
+    bool SetCaretRect(std::uint32_t session_id, int x, int y, int w, int h);
+
 private:
     bool TryOpenPipe();
     bool LaunchEngine();

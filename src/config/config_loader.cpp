@@ -26,6 +26,7 @@ void ReplaceAll(std::string& s, std::string_view from, std::string_view to) {
 Config ExpandPlaceholders(Config cfg, const std::string& current_user_sid,
                           const std::string& appdata_dir) {
     ReplaceAll(cfg.ipc.pipe_name_template, "{sid}", current_user_sid);
+    ReplaceAll(cfg.ipc.ui_pipe_name_template, "{sid}", current_user_sid);
     ReplaceAll(cfg.engine.user_data_dir, "{appdata}", appdata_dir);
     ReplaceAll(cfg.engine.exe_path, "{appdata}", appdata_dir);
     ReplaceAll(cfg.engine.model_dir, "{appdata}", appdata_dir);
