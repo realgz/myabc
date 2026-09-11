@@ -47,6 +47,15 @@ public:
     bool Init(const std::string& model_dir, const std::string& user_dir);
     bool ready() const noexcept { return instance_ != nullptr; }
 
+    // M3（plan 04 §3.5）：按 config.input.scheme / config.input.fuzzy 调整解析选项。
+    // incomplete_enabled：quanpin=false（严格全拼，不接受简拼/混拼）；
+    //                     jianpin/hunpin=true（libpinyin 统一用 PINYIN_INCOMPLETE 处理
+    //                     简拼/混拼——两者对 libpinyin 而言是同一个开关，见
+    //                     docs/decisions/_debt-log.md 2026-09-11 的简化说明）。
+    // fuzzy_names：模糊音开关名集合，取值见 libpinyin_wrapper.cpp 里的映射表
+    // （c_ch/s_sh/z_zh/f_h/g_k/l_n/l_r/an_ang/en_eng/in_ing/all）；未识别的名字忽略。
+    void ApplyInputOptions(bool incomplete_enabled, const std::vector<std::string>& fuzzy_names);
+
     // 用完整原始拼音串重新猜测（丢弃此前任何 Choose 产生的分段约束）。
     // M1 简化：追加字母 / 退格都整串重算，不做增量约束保留——见 _debt-log 2026-09-11。
     void ParseAndGuess(const std::string& raw_pinyin);

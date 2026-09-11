@@ -84,6 +84,13 @@ std::string SelfDir() {
     return slash == std::string::npos ? "." : p.substr(0, slash);
 }
 
+// M3（plan 04 §3.5）：quanpin 严格全拼（不接受简拼/混拼）；jianpin/hunpin 允许
+// （libpinyin 对两者用同一个 PINYIN_INCOMPLETE 开关，见 libpinyin_wrapper.cpp 头注释）。
+void ApplySchemeAndFuzzy(myabc::engine::LibPinyinEngine& engine, const myabc::config::Config& cfg) {
+    const bool incomplete = cfg.input.scheme != "quanpin";
+    engine.ApplyInputOptions(incomplete, cfg.input.fuzzy);
+}
+
 myabc::engine::SessionOptions ToSessionOptions(const myabc::config::Config& cfg) {
     myabc::engine::SessionOptions opts;
     opts.page_size = cfg.candidates.page_size;
@@ -109,6 +116,7 @@ int main(int argc, char** argv) {
             std::printf("selftest: pinyin_init 失败（model-dir=%s）。exit 1\n", model_dir.c_str());
             return 1;
         }
+        ApplySchemeAndFuzzy(engine, cfg);
 
         engine.ParseAndGuess("nihao");
         const std::string sentence = engine.CurrentSentence();
@@ -137,6 +145,8 @@ int main(int argc, char** argv) {
                      "警告：libpinyin 初始化失败（model-dir=%s, user-dir=%s）。"
                      "processKey 将始终 handled:false，hello/shutdown 仍可用。\n",
                      model_dir.c_str(), user_dir.c_str());
+    } else {
+        ApplySchemeAndFuzzy(engine, cfg);
     }
 
     const std::string ui_pipe_name = ArgValue(argc, argv, "--ui-pipe", cfg.ipc.ui_pipe_name_template);

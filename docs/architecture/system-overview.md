@@ -159,8 +159,8 @@ sessionId 由 TIP 每个文档上下文分配，隔离多窗口并发组字。
 | candidates.page_prev_keys | ["-", ","] | 上一页键 |
 | candidates.page_next_keys | ["=", "."] | 下一页键 |
 | candidates.select_keys | "123456789" | 选字键 |
-| input.scheme | "quanpin" | quanpin/jianpin/hunpin/(shuangpin 预留) |
-| input.fuzzy | [] | 模糊音开关集合（映射 libpinyin pinyin_option_t） |
+| input.scheme | "hunpin"（M3 起，原 "quanpin"） | quanpin(严格全拼)/jianpin/hunpin(简拼+混拼，libpinyin 用同一开关处理二者)/(shuangpin 预留未实现) |
+| input.fuzzy | []（开关名如 "z_zh"/"an_ang"，见 backend/libpinyin_wrapper.cpp 映射表） | 模糊音开关集合（映射 libpinyin PinyinAmbiguity2 位） |
 | input.bihuo_enabled | true | 笔形辅助码 |
 | input.number_lead_key | "i" | i 引导数字/金额 |
 | output.charset | "gbk" | gb2312/gbk/unicode，决定 CharsetFilter |

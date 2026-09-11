@@ -7,18 +7,40 @@
 
 #include <pinyin.h>
 
+#include <array>
 #include <cstdio>
+#include <string_view>
 
 namespace myabc::engine {
 
 namespace {
 // DECISION: docs/decisions/pinyin-engine/20260909-adopt-libpinyin-mingw-engine-process.md
-// 取自 third_party/libpinyin/tests/test_pinyin.cpp 的规范用法：全拼 + 容错 + 动态调频。
-constexpr pinyin_option_t kOptions = static_cast<pinyin_option_t>(
-    PINYIN_INCOMPLETE | PINYIN_CORRECT_ALL | USE_DIVIDED_TABLE | USE_RESPLIT_TABLE |
-    DYNAMIC_ADJUST);
+// 取自 third_party/libpinyin/tests/test_pinyin.cpp 的规范用法：容错 + 动态调频，这几项
+// 始终打开，不随 scheme/fuzzy 变化。PINYIN_INCOMPLETE 由 ApplyInputOptions 按需叠加
+// ——quanpin 关、jianpin/hunpin 开（libpinyin 对两者用同一个开关，见 plan 04 §2）。
+constexpr pinyin_option_t kBaseOptions = static_cast<pinyin_option_t>(
+    PINYIN_CORRECT_ALL | USE_DIVIDED_TABLE | USE_RESPLIT_TABLE | DYNAMIC_ADJUST);
 
 constexpr guint kSortOption = SORT_BY_PHRASE_LENGTH | SORT_BY_FREQUENCY;
+
+// config.input.fuzzy 的开关名 -> PinyinAmbiguity2 位。M3（plan 04 §3.5）。
+struct FuzzyEntry {
+    std::string_view name;
+    pinyin_option_t bit;
+};
+constexpr std::array<FuzzyEntry, 11> kFuzzyTable{{
+    {"all", static_cast<pinyin_option_t>(PINYIN_AMB_ALL)},
+    {"c_ch", static_cast<pinyin_option_t>(PINYIN_AMB_C_CH)},
+    {"s_sh", static_cast<pinyin_option_t>(PINYIN_AMB_S_SH)},
+    {"z_zh", static_cast<pinyin_option_t>(PINYIN_AMB_Z_ZH)},
+    {"f_h", static_cast<pinyin_option_t>(PINYIN_AMB_F_H)},
+    {"g_k", static_cast<pinyin_option_t>(PINYIN_AMB_G_K)},
+    {"l_n", static_cast<pinyin_option_t>(PINYIN_AMB_L_N)},
+    {"l_r", static_cast<pinyin_option_t>(PINYIN_AMB_L_R)},
+    {"an_ang", static_cast<pinyin_option_t>(PINYIN_AMB_AN_ANG)},
+    {"en_eng", static_cast<pinyin_option_t>(PINYIN_AMB_EN_ENG)},
+    {"in_ing", static_cast<pinyin_option_t>(PINYIN_AMB_IN_ING)},
+}};
 }  // namespace
 
 LibPinyinEngine::LibPinyinEngine() = default;
@@ -34,7 +56,8 @@ bool LibPinyinEngine::Init(const std::string& model_dir, const std::string& user
     auto* ctx = ::pinyin_init(model_dir.c_str(), user_dir.c_str());
     if (ctx == nullptr) return false;
 
-    ::pinyin_set_options(ctx, kOptions);
+    // 默认等价旧 M1 行为（quanpin+incomplete 常开）；ApplyInputOptions 随后按配置覆盖。
+    ::pinyin_set_options(ctx, static_cast<pinyin_option_t>(kBaseOptions | PINYIN_INCOMPLETE));
 
     auto* inst = ::pinyin_alloc_instance(ctx);
     if (inst == nullptr) {
@@ -45,6 +68,25 @@ bool LibPinyinEngine::Init(const std::string& model_dir, const std::string& user
     context_ = reinterpret_cast<_pinyin_context_t*>(ctx);
     instance_ = reinterpret_cast<_pinyin_instance_t*>(inst);
     return true;
+}
+
+void LibPinyinEngine::ApplyInputOptions(bool incomplete_enabled,
+                                        const std::vector<std::string>& fuzzy_names) {
+    if (!ready()) return;
+
+    pinyin_option_t opts = kBaseOptions;
+    if (incomplete_enabled) opts = static_cast<pinyin_option_t>(opts | PINYIN_INCOMPLETE);
+
+    for (const auto& name : fuzzy_names) {
+        for (const auto& entry : kFuzzyTable) {
+            if (entry.name == name) {
+                opts = static_cast<pinyin_option_t>(opts | entry.bit);
+                break;
+            }
+        }
+    }
+
+    ::pinyin_set_options(reinterpret_cast<pinyin_context_t*>(context_), opts);
 }
 
 void LibPinyinEngine::ParseAndGuess(const std::string& raw_pinyin) {

@@ -1,6 +1,13 @@
 # 未留痕债务登记表
 
-（M2 用户反馈修复，日期 2026-09-11；置顶方便查看，历史条目见下方原表）
+（M3 各条追加于此，日期 2026-09-11；置顶方便查看，历史条目见下方原表）
+
+| 日期 | 条目 | 处理状态 |
+|---|---|---|
+| 2026-09-11 | **M3：jianpin_parser/hunpin_parser 未按 plan 04 §3.1 建独立文件**。计划列了 `jianpin_parser.cpp/.h`、`hunpin_parser.cpp/.h` 两个文件，但探查 libpinyin 行为后发现：简拼与混拼对 libpinyin 而言是**同一个机制**——都是 `PINYIN_INCOMPLETE` 选项打开后，`pinyin_parse_more_full_pinyins` 原样处理输入串，libpinyin 自己识别哪些音节完整、哪些不完整并做混合匹配，不需要上层做任何区分性的解析或分支。计划自己也承认"hunpin 本质是 incomplete 开关"。因此没有创建两个内容几乎相同的类（避免为不存在的行为差异建模，属 code-quality-standards §3.2 的反面——3+ 分支/实现才要适配器，这里根本没有分支）。改为 `LibPinyinEngine::ApplyInputOptions(incomplete_enabled, fuzzy_names)`：`config.input.scheme` 只做一件事——quanpin 关 `PINYIN_INCOMPLETE`，jianpin/hunpin 开。 | 已决策，M3 |
+| 2026-09-11 | **M3：模糊音真正接线**。`config.input.fuzzy` 字段 M1 起就存在但从未使用；本轮加 `PinyinAmbiguity2` 位映射表（`c_ch/s_sh/z_zh/f_h/g_k/l_n/l_r/an_ang/en_eng/in_ing/all`），`ApplyInputOptions` 按名字叠加位。golden 测试验证：开 `z_zh` 后输入 `zongguo` 命中"中国"（M3-7）。 | 已实现并验证，M3 |
+| 2026-09-11 | **M3：`bj` 简拼不是 top1"北京"，是"候选命中"**。plan 04 §5 M3-1 写"bj + 空格 -> 期望 top 候选：北京"；实测 libpinyin 默认语料对孤立两字母简拼（无上下文）给出的 top1 是"编辑"，"北京"排第 2。这是 libpinyin 内建统计模型（unigram 频率）对"没有前后文的两个声母"这类极度歧义输入的合理排序，不是 bug；`bjing`/`beij`（声母+完整音节混拼，歧义显著降低）top1 就正确是"北京"。真要让纯声母简拼精确匹配某个具体期望词，需要专门的语料调权或强制置顶规则，超出"让简拼/混拼能正确转换"这一 M3 核心目标的性价比。**处理**：golden 测试对 `bj` 按"候选命中"断言（如实反映现状），不用取巧手段（如预训练/强制 boost）让它假装 top1。 | 已如实记录，不视为缺陷 |
+| 2026-09-11 | **M3：切分歧义显示（xi'an 隔音号 / segments 字段 / PROTOCOL_VERSION->3）未做**。plan 04 §3.2/§3.3 想要 preedit 显示 `xi'an` 这样的隔音号提示、候选按切分分组、协议加 `segments` 字段。实测 libpinyin 不需要这层提示就已经能在候选列表里正确给出"西安"（xi'an 切分）与"现/县/先"（xian 整体）两组候选（M3-4 验证过）——**核心转换正确性不依赖这个展示层**。这纯粹是"让用户更容易看懂候选列表为什么这么多"的锦上添花，需要用 `pinyin_get_pinyin_key_rest_positions` 之类的音节位置内省 API 把切分点映射回原始按键偏移，工作量不小，且不影响任何一条"转换对不对"的验收判据。**处理**：本轮不做，PROTOCOL_VERSION 维持 2（没有新增/改动任何 wire 字段）。留到真有用户反馈"候选太多看不懂"时再评估。 | 待后续（无明确里程碑，观察是否变必需） |
 
 | 日期 | 条目 | 处理状态 |
 |---|---|---|

@@ -51,9 +51,13 @@ struct CandidatesConfig {
 };
 
 struct InputConfig {
-    // quanpin/jianpin/hunpin（M3 起）/shuangpin（预留）。M1 只实现 quanpin。
-    std::string scheme = "quanpin";
-    // 模糊音开关集合，映射 libpinyin pinyin_option_t 的 PinyinAmbiguity2 位。M1 为空。
+    // quanpin（严格全拼，关闭简拼/混拼）/jianpin/hunpin（简拼与混拼，libpinyin 用同一个
+    // PINYIN_INCOMPLETE 开关处理两者，见 docs/decisions/_debt-log.md 2026-09-11）/
+    // shuangpin（预留，未实现）。M3 起默认 hunpin，对标智能ABC习惯（plan 04 §3.5）。
+    std::string scheme = "hunpin";
+    // 模糊音开关名集合，取值：c_ch/s_sh/z_zh/f_h/g_k/l_n/l_r/an_ang/en_eng/in_ing/all
+    // （对应 libpinyin PinyinAmbiguity2 位，见 backend/libpinyin_wrapper.cpp 的映射表）。
+    // 默认空——不默认开模糊音（用户输入不准确就不该被"纠正"，需显式开启）。
     std::vector<std::string> fuzzy;
 };
 
