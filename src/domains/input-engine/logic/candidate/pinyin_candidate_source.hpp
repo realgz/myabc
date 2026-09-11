@@ -24,6 +24,7 @@ public:
 
     bool Handles(const InputContext& ctx) const override;
     std::vector<CandidateItem> Produce(const InputContext& ctx) override;
+    bool UsesEngineChoose() const override { return true; }
 
 private:
     LibPinyinEngine& engine_;

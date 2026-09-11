@@ -63,3 +63,20 @@
 ## 4. 回滚锚点
 
 `git tag m4-classic`（回滚到 M3 用 `git checkout m3-jianpin`）。
+
+## 5. 事后修复（M5 开工前发现，追加于 tag 之后）
+
+打 `m4-classic` 标签后、开始 M5 训练接线前，复查"选中候选"这条路径时发现两个真
+bug（详见 `docs/decisions/_debt-log.md` 置顶条目）：
+1. 数字/金额候选（`NumberCurrencySource`）选不中——`SelectCandidate`/`CommitComposition`
+   一直无条件假设候选来自 libpinyin，对这类"原子候选"来源直接查 libpinyin 内部数组，
+   查不到，静默清空候选/提交错误文本。
+2. 笔形过滤（`` yi`3 `` 类）生效时选中会错位——过滤后显示下标跟 libpinyin 内部下标
+   不再一致，选中显示的第 N 项实际会提交内部完全不同的第 N 项。
+
+根因：本报告 §2 的端到端验证全部只做了"peek 候选 + cancel"，没有真正走选中/确认
+路径，M4 验收判据本身也没要求这一步——两个 bug 因此在打 tag 时仍然存在。已修复
+（`CandidateSource::UsesEngineChoose()` + `CandidateItem::engine_index`，见 debt-log）
+并用真实 IPC 端到端测试补上"选中并确认 commit 内容与显示一致"的验证，`ctest`
+全绿，`tests/review/run_all` GREEN。这次修复未改变本报告 §2 任何验收判据的结论，
+不重新打 tag（bug 修复随 M5 一起提交）。

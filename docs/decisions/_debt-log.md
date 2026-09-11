@@ -1,6 +1,10 @@
 # 未留痕债务登记表
 
-（M4 各条追加于此，日期 2026-09-11；置顶方便查看，历史条目见下方原表）
+（M4 后、M5 前的 bug 修复追加于此，日期 2026-09-11；置顶方便查看，历史条目见下方原表）
+
+| 日期 | 条目 | 处理状态 |
+|---|---|---|
+| 2026-09-11 | **M4 遗留真 bug（M5 开工前发现并修）：数字/金额候选选不中 + 笔形过滤后选中错位**。`Session::SelectCandidate`/`CommitComposition` 从 M1 起就无条件假设 `candidates_` 的下标对应 libpinyin 内部候选数组、`engine_.CurrentSentence()` 反映当前组字内容——这个假设在只有 `PinyinCandidateSource` 一种来源时成立，M4 加入 `NumberCurrencySource`（产出跟 libpinyin 无关的"原子候选"列表）后就不成立了，但没人去检查。**bug 1**：选中数字/金额候选（如 `i2025` 按空格）——`engine_.Choose(index,...)` 内部 `index >= raw_candidates_.size()`（libpinyin 从没解析过这个 raw，数组是空的）恒为 true，`Choose` 直接返回 false，候选列表被静默清空，组字卡死，永远提交不了。`CommitComposition` 同理：`engine_.CurrentSentence()` 对未解析过的 raw 返回空串，兜底成 `raw_`，会把字面量 `"i2025"` 而不是渲染后的候选提交上屏。**bug 2**（更隐蔽）：笔形过滤生效时（如 `` yi`3 ``），`PinyinCandidateSource::Produce()` 返回的是 `engine_.candidates()` 的**子集**，下标已经跟 libpinyin 内部数组错位——用户看到显示的第 0 项是"以"，选中后 `engine_.Choose(0,...)` 选的却是 libpinyin 内部真正的第 0 项"一"，静默提交了用户没看到、没选的字。两个 bug 都是"响应看起来正常（`ok:true`/有 `commit` 字段），内容却是错的"这一类最难发现的问题，本轮 M4 报告的端到端测试全部只做了"peek 候选 + cancel"没有真正走选中/确认路径，完全没覆盖到。**修复**：`CandidateSource` 加 `UsesEngineChoose()`（默认 false，`PinyinCandidateSource` 覆写为 true）标记这个来源的候选是否跟 libpinyin 内部数组对应；`CandidateItem` 加 `engine_index`（默认 -1 = 显示下标即内部下标），`FilterByBihuo` 过滤时显式记录每一项的原始下标；`Session` 用 `current_source_uses_engine_choose_`（`Recompute()` 里跟 `candidates_` 一起刷新）分流：非 engine-choose 来源直接把 `candidates_[index].text` 当整句提交，不查 libpinyin；engine-choose 来源用 `item.engine_index`（不是显示下标）调 `engine_.Choose()`。**经验记录**（第四次同类教训，接续 M1 CWD bug / M2 id 冲突 bug / M4 笔形触发键 bug）：新增一种 `CandidateSource` 实现后，必须重新审视"选中/确认"这条路径是否还对所有来源成立——接口层面的"新增来源=新增一个类"没错，但 `Session` 里"怎么处理选中"这部分逻辑本身也要跟着适配器扩展审查，不能假设旧逻辑自动适用于新来源。真实选中+提交的端到端测试（不只是 peek 候选）应作为每个新 CandidateSource 落地的标配验收步骤。 | 已修复并端到端验证 |
 
 | 日期 | 条目 | 处理状态 |
 |---|---|---|

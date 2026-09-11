@@ -108,6 +108,41 @@ int main() {
             std::printf("OK: 表命中但前缀不匹配的字被正确排除\n");
         }
     }
+    {
+        // 回归（M5 前修复的真 bug，见 _debt-log.md）：过滤后每一项必须记住自己在
+        // *原始*（未过滤）列表里的下标（engine_index），否则 Session::SelectCandidate
+        // 传给 libpinyin 的下标会跟用户看到的候选错位，选中显示的第 N 项实际会选中
+        // libpinyin 内部完全不同的候选。candidates = ["我"(0), "握"(1), "窝"(2), "卧"(3)]，
+        // 笔形"1" 应保留 "窝"(原始下标2) 和 "卧"(原始下标3，未收录 fail-open)。
+        const auto filtered = FilterByBihuo(candidates, "1", table);
+        CheckEq(filtered.size(), static_cast<std::size_t>(2), "笔形1过滤应保留2项（窝+卧）");
+        bool ok = true;
+        for (const auto& c : filtered) {
+            if (c.text == "窝" && c.engine_index != 2) ok = false;
+            if (c.text == "卧" && c.engine_index != 3) ok = false;
+        }
+        if (ok) {
+            std::printf("OK: 过滤后每项的 engine_index 正确指回原始下标（选中不会错位）\n");
+        } else {
+            std::fprintf(stderr, "FAIL: engine_index 没有正确指回原始下标——选中会错位到别的候选\n");
+            ++g_failures;
+        }
+    }
+    {
+        // 空后缀不过滤：原样返回，engine_index 保持默认 -1（Session 约定：-1 时
+        // 显示下标本身就是 libpinyin 内部下标，未过滤/未重排时天然成立）。
+        const auto filtered = FilterByBihuo(candidates, "", table);
+        bool all_default = true;
+        for (const auto& c : filtered) {
+            if (c.engine_index != -1) all_default = false;
+        }
+        if (all_default) {
+            std::printf("OK: 空后缀不过滤时 engine_index 保持默认 -1\n");
+        } else {
+            std::fprintf(stderr, "FAIL: 空后缀不该改动 engine_index\n");
+            ++g_failures;
+        }
+    }
 
     if (g_failures == 0) {
         std::puts("bihuoma_filter_test: all checks passed");

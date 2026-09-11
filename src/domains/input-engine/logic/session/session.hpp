@@ -90,6 +90,10 @@ private:
     std::string last_partial_sentence_;        // 部分确认后的展示文本；追加/退格字母时清空
     std::vector<CandidateItem> candidates_;    // 全量（未分页）
     int page_index_ = 0;
+    // 当前 candidates_ 是哪个 CandidateSource 产出的（CandidateSource::UsesEngineChoose()），
+    // 决定 SelectCandidate/CommitComposition 该不该查 libpinyin（见 session.cpp DECISION，
+    // M5 前修复：数字/金额候选选不中的真 bug）。Recompute() 里跟 candidates_ 一起刷新。
+    bool current_source_uses_engine_choose_ = false;
 };
 
 }  // namespace myabc::engine

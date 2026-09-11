@@ -31,6 +31,13 @@ namespace myabc::engine {
 struct CandidateItem {
     std::string text;
     bool is_sentence = false;   // true = 整句候选（NBEST_MATCH_CANDIDATE）
+    // -1（默认）= 这一项在候选列表里的下标就是 libpinyin 内部候选数组下标（未被任何
+    // 过滤/重排改变，如 Choose() 直接返回的原始 candidates()）。>=0 = 显式指定内部
+    // 下标——某个 CandidateSource（如笔形过滤后的 PinyinCandidateSource）产出的列表
+    // 是原始候选的子集/重排时必须设置，否则 Session::SelectCandidate 传给 libpinyin
+    // 的下标会跟用户看到的候选错位（M5 前修复的真 bug，见 _debt-log.md）。只有
+    // CandidateSource::UsesEngineChoose()==true 的来源需要关心这个字段。
+    int engine_index = -1;
 };
 
 class LibPinyinEngine {

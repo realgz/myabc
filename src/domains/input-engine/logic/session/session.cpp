@@ -112,14 +112,34 @@ SessionResult Session::SelectCandidate(int index_in_page) {
         static_cast<std::size_t>(page_index_) * opts_.page_size + static_cast<std::size_t>(index_in_page);
     if (global_index >= candidates_.size()) return BuildViewResult(false);
 
+    // DECISION（M5 前修复真 bug，见 docs/decisions/_debt-log.md）：只有
+    // UsesEngineChoose()==true 的来源（拼音）的 candidates_ 下标才对应 libpinyin 内部
+    // 候选数组；number_currency 这类"原子候选"来源的 candidates_ 是自己攒的、跟
+    // libpinyin 无关的列表，选中即直接把这一项整句提交，绝不能传给 engine_.Choose()——
+    // 之前统一走 Choose() 导致这类候选要么选不中（下标查不到，静默卡在组字态），要么
+    // （笔形过滤后）选中的字跟显示的对不上（下标错位）。
+    if (!current_source_uses_engine_choose_) {
+        std::string text = candidates_[global_index].text;
+        ResetToIdle();
+        return BuildViewResult(true, true, std::move(text));
+    }
+
+    // 笔形过滤会让显示下标跟 libpinyin 内部下标错位；engine_index>=0 时用它，否则
+    // （未过滤）显示下标本身就是内部下标。见 CandidateItem::engine_index 注释。
+    const CandidateItem& item = candidates_[global_index];
+    const std::size_t engine_idx = item.engine_index >= 0
+                                       ? static_cast<std::size_t>(item.engine_index)
+                                       : global_index;
+
     std::string sentence_text;
-    const bool done = engine_.Choose(global_index, sentence_text);
+    const bool done = engine_.Choose(engine_idx, sentence_text);
     if (done) {
         ResetToIdle();
         return BuildViewResult(true, true, sentence_text);
     }
 
     candidates_ = engine_.candidates();
+    current_source_uses_engine_choose_ = true;   // engine_.candidates() 天然 1:1，无需过滤映射
     page_index_ = 0;
     last_partial_sentence_ = sentence_text;
     return BuildViewResult(true);
@@ -138,9 +158,16 @@ SessionResult Session::PageCandidates(int delta) {
 
 SessionResult Session::CommitComposition() {
     if (!composing_) return BuildViewResult(false);
-    std::string text = last_partial_sentence_.empty() ? engine_.CurrentSentence()
-                                                       : last_partial_sentence_;
-    if (text.empty()) text = raw_;   // 兜底：解析失败也不吞用户输入
+    std::string text;
+    if (current_source_uses_engine_choose_) {
+        text = last_partial_sentence_.empty() ? engine_.CurrentSentence() : last_partial_sentence_;
+        if (text.empty()) text = raw_;   // 兜底：解析失败也不吞用户输入
+    } else {
+        // 原子候选来源（如 number_currency）：engine_.CurrentSentence() 跟它无关
+        // （libpinyin 从没解析过这个 raw_），直接取候选[0]，跟 Recompute() 的
+        // AutoCommit 分支同一套兜底逻辑（M5 前修复真 bug，见 _debt-log.md）。
+        text = candidates_.empty() ? raw_ : candidates_.front().text;
+    }
     ResetToIdle();
     return BuildViewResult(true, true, text);
 }
@@ -162,6 +189,7 @@ SessionResult Session::Recompute() {
         return BuildViewResult(false);
     }
 
+    current_source_uses_engine_choose_ = src->UsesEngineChoose();
     candidates_ = src->Produce(ctx);
     page_index_ = 0;
 

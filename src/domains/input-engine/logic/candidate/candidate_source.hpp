@@ -40,6 +40,13 @@ public:
     // true：Produce() 的结果不需要用户翻页/选字确认，Session 应立即取候选[0]上屏
     // 并结束组字（标点、英文透传）。默认 false（pinyin：需要用户选字/翻页）。
     virtual bool AutoCommit() const { return false; }
+
+    // true：candidates_ 的下标跟 LibPinyinEngine 内部候选数组一一对应，SelectCandidate/
+    // CommitComposition 要走 engine_.Choose()/CurrentSentence()（分段确认、整句语境）。
+    // false（默认）：candidates_ 是这个来源自己攒的、跟 libpinyin 无关的原子候选列表
+    // （如 number_currency），选中即直接把 candidates_[index].text 当整句提交，不查
+    // libpinyin。见 session.cpp DECISION（M5 前修复：数字/金额候选选不中的真 bug）。
+    virtual bool UsesEngineChoose() const { return false; }
 };
 
 }  // namespace myabc::engine

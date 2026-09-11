@@ -26,16 +26,18 @@ std::vector<CandidateItem> FilterByBihuo(const std::vector<CandidateItem>& candi
 
     std::vector<CandidateItem> result;
     result.reserve(candidates.size());
-    for (const auto& c : candidates) {
+    for (std::size_t i = 0; i < candidates.size(); ++i) {
+        CandidateItem c = candidates[i];
         const std::string first_char = FirstUtf8Char(c.text);
         const auto code = table.Lookup(first_char);
-        if (!code) {
-            result.push_back(c);   // 未收录：fail-open，不过滤
-            continue;
-        }
-        if (code->rfind(bihuo_suffix, 0) == 0) {   // code 以 bihuo_suffix 为前缀
-            result.push_back(c);
-        }
+        const bool keep = !code || code->rfind(bihuo_suffix, 0) == 0;   // 未收录 fail-open，
+                                                                        // 或 code 以后缀为前缀
+        if (!keep) continue;
+        // 过滤会让结果下标跟原始（libpinyin 内部）下标错位——必须记住原始下标，
+        // 否则 Session::SelectCandidate 选中显示的第 N 项会实际选中 libpinyin 里
+        // 完全不同的第 N 项（M5 前修复的真 bug，见 _debt-log.md）。
+        c.engine_index = static_cast<int>(i);
+        result.push_back(std::move(c));
     }
     return result;
 }
