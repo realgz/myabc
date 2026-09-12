@@ -92,7 +92,10 @@ wchar_t VkToCharCtrlAware(WPARAM vk, LPARAM lParam, bool ctrl) {
 
 CMyabcTextService::CMyabcTextService() : key_router_(config_.candidates) { DllAddRef(); }
 
-CMyabcTextService::~CMyabcTextService() { DllRelease(); }
+CMyabcTextService::~CMyabcTextService() {
+    SetCachedContext(nullptr);   // 防御性收尾：正常路径下 Deactivate() 应该已经清过
+    DllRelease();
+}
 
 // ---- IUnknown -------------------------------------------------------------
 STDMETHODIMP CMyabcTextService::QueryInterface(REFIID riid, void** ppv) {
@@ -146,6 +149,8 @@ STDMETHODIMP CMyabcTextService::ActivateEx(ITfThreadMgr* ptim, TfClientId tid, D
 
 STDMETHODIMP CMyabcTextService::Deactivate() {
     UninitSinks();
+    click_bridge_.Destroy();
+    SetCachedContext(nullptr);
     if (ipc_) ipc_->FocusOut(kSessionId);
     ipc_.reset();
     composition_.OnExternallyTerminated();   // 防御性清本地指针；文档侧由框架负责终止
@@ -330,6 +335,8 @@ STDMETHODIMP CMyabcTextService::OnPreservedKey(ITfContext*, REFGUID, BOOL* pfEat
 STDMETHODIMP CMyabcTextService::OnCompositionTerminated(TfEditCookie /*ec*/,
                                                         ITfComposition* /*composition*/) {
     composition_.OnExternallyTerminated();
+    click_bridge_.Destroy();   // 组字被外部中止（如切焦点）：鼠标点击桥也一并收掉
+    SetCachedContext(nullptr);
     // 候选窗隐藏由引擎在下一次 processKey/... 算出 composing=false 时经 uiHide 处理；
     // 这里只是外部中止（如切焦点）——引擎侧状态留到下次交互再由 cancelComposition
     // 之类的调用收敛，不在这里额外发请求（避免在任意回调里发起 IPC）。
@@ -349,6 +356,8 @@ void CMyabcTextService::ApplyEngineResponse(ITfContext* context, const ipc::Resp
 
     if (state.has_commit) {
         composition_.EndWithText(context, tid_, state.commit_text);
+        click_bridge_.Destroy();   // 组字结束：鼠标点击桥没有存在的意义了
+        SetCachedContext(nullptr);
         return;
     }
 
@@ -359,12 +368,42 @@ void CMyabcTextService::ApplyEngineResponse(ITfContext* context, const ipc::Resp
             ipc_->SetCaretRect(kSessionId, caret.left, caret.top, caret.right - caret.left,
                               caret.bottom - caret.top);
         }
+        // 鼠标点击选字（见 click_bridge.hpp）：只在正在组字期间存在这个桥，
+        // 组字状态每次刷新（包括点击本身触发的这次 ApplyEngineResponse）都要
+        // 重新缓存最新的 context——理论上同一次组字里 context 不会变，但用赋值
+        // 而不是"只在没缓存时才存"更简单也更保险（万一真的变了也能跟上）。
+        SetCachedContext(context);
+        if (!click_bridge_.active()) {
+            click_bridge_.Create([this](int index) { OnCandidateClicked(index); });
+        }
         return;
     }
 
     // handled=true 但既没 commit 也不再 composing（ESC 取消 / 退格清空到底）。
     // 引擎已经在算出 composing=false 的同一时刻自己推了 uiHide，这里只用管本地 TSF 状态。
     HideAndResetComposition(context);
+    click_bridge_.Destroy();
+    SetCachedContext(nullptr);
+}
+
+void CMyabcTextService::SetCachedContext(ITfContext* context) {
+    if (cached_context_ == context) return;
+    if (cached_context_ != nullptr) cached_context_->Release();
+    cached_context_ = context;
+    if (cached_context_ != nullptr) cached_context_->AddRef();
+}
+
+void CMyabcTextService::OnCandidateClicked(int index) {
+    // 在 ClickBridge 的 WndProc 里同步调用——跟 OnKeyDown 同一个线程（宿主应用
+    // UI 线程），可以放心做同样的 COM/TSF 调用。cached_context_ 为空说明组字已经
+    // 在别的路径结束了（正常的竞态：点击消息还在路上，组字先一步收尾），直接丢弃。
+    if (!ipc_ || cached_context_ == nullptr) return;
+
+    ipc::Response resp;
+    const bool ok = ipc_->SelectCandidate(kSessionId, index, resp);
+    if (!ok || !resp.ok || !resp.result.value("handled", false)) return;
+
+    ApplyEngineResponse(cached_context_, resp);
 }
 
 }  // namespace myabc::tsf

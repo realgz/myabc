@@ -26,7 +26,7 @@ target_include_directories(myabc-candidate-ui PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/logic"
 )
 
-target_link_libraries(myabc-candidate-ui PUBLIC gdi32 user32)
+target_link_libraries(myabc-candidate-ui PUBLIC gdi32 user32 myabc::click_bridge_protocol)
 target_compile_definitions(myabc-candidate-ui PUBLIC UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
 myabc_set_warnings(myabc-candidate-ui)
 

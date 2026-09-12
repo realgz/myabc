@@ -20,6 +20,7 @@ add_library(myabc-tip SHARED
     backend/edit_session.cpp
     backend/composition.cpp
     backend/ipc_client.cpp
+    backend/click_bridge.cpp
     backend/dll_refcount.cpp
     backend/text_convert.cpp
     logic/key_router.cpp
@@ -39,6 +40,7 @@ target_link_libraries(myabc-tip PRIVATE
     myabc::config
     myabc::guids
     myabc::deploy-core  # DllRegisterServer 复用 TSF/COM 注册逻辑
+    myabc::click_bridge_protocol   # 候选窗鼠标点击 -> TIP 跨进程契约（见 click_bridge.hpp）
     WIL::WIL
     ole32 oleaut32 uuid advapi32   # TSF 是 COM，无 msctf.lib；CLSID/IID 来自 uuid.lib
     # 不再链 myabc::candidate-ui / gdi32 —— 候选窗迁到独立的 myabc-ui.exe（M2，plan 03 §3.3）。

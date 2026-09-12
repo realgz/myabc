@@ -54,11 +54,23 @@ private:
     void HandleShow(ShowRequest* req);   // 取得所有权，用完 delete
     void Paint(HWND hwnd);
 
+    // 鼠标支持（见 docs/decisions/tsf-service/20260912-mouse-candidate-select.md）：
+    // 候选行的屏幕布局是从 model_.items.size() + 固定的 kPaddingPx/kLineHeightPx 常量
+    // 纯计算出来的（Paint() 画的也是这份计算结果），不需要另存一份"上次画的矩形"，
+    // 命中测试直接复用同一个函数，永远跟实际绘制一致。
+    RECT ItemRectFor(std::size_t index) const;   // 相对客户区坐标，整行宽度（跟高亮同宽）
+    int HitTest(POINT client_pt) const;          // 命中的候选下标；未命中 -1
+    void HandleMouseMove(HWND hwnd, POINT client_pt);
+    void HandleLButtonUp(POINT client_pt);
+    void NotifyTipOfClick(int index) const;   // 见 shared click-bridge-protocol
+
     HANDLE thread_ = nullptr;
     HANDLE ready_event_ = nullptr;
     HWND hwnd_ = nullptr;
     HFONT font_ = nullptr;
     CandidateViewModel model_;   // 只在窗口线程读写
+    int hover_index_ = -1;       // 鼠标悬停高亮，-1 = 无；WM_MOUSELEAVE 时清空
+    bool tracking_mouse_ = false;   // TrackMouseEvent 是否已投递，避免重复调用
 };
 
 }  // namespace myabc::ui

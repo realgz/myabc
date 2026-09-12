@@ -22,6 +22,7 @@
 
 #include <memory>
 
+#include "click_bridge.hpp"
 #include "composition.hpp"
 #include "config_defaults.hpp"
 #include "ipc_client.hpp"
@@ -77,6 +78,14 @@ private:
     void ApplyEngineResponse(ITfContext* context, const ipc::Response& resp);
     void HideAndResetComposition(ITfContext* context);
 
+    // 鼠标点击候选（见 click_bridge.hpp / docs/decisions/tsf-service/
+    // 20260912-mouse-candidate-select.md）：ClickBridge 只在正在组字期间存在，
+    // 生命周期在 ApplyEngineResponse 的 composing 状态变化处管理。cached_context_
+    // 缓存组字所在的 ITfContext——鼠标点击是异步事件，没有 OnKeyDown 那样现成的
+    // pic 参数，必须自己存一份并正确 AddRef/Release。
+    void SetCachedContext(ITfContext* context);
+    void OnCandidateClicked(int index);
+
     LONG ref_ = 1;
     ITfThreadMgr* thread_mgr_ = nullptr;
     TfClientId tid_ = TF_CLIENTID_NULL;
@@ -90,6 +99,8 @@ private:
     ModeManager mode_manager_;
     std::unique_ptr<IpcClient> ipc_;
     CompositionController composition_;
+    ClickBridge click_bridge_;
+    ITfContext* cached_context_ = nullptr;   // 手动 AddRef/Release，见 SetCachedContext
 };
 
 }  // namespace myabc::tsf

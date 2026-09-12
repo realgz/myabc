@@ -5,7 +5,11 @@
 
 #include "candidate_window.hpp"
 
+#include <windowsx.h>   // GET_X_LPARAM/GET_Y_LPARAM
+
 #include <string>
+
+#include "click_bridge_protocol.hpp"
 
 namespace myabc::ui {
 
@@ -109,6 +113,10 @@ void CandidateWindow::RunOnWindowThread() {
 void CandidateWindow::HandleShow(ShowRequest* req) {
     model_ = std::move(req->model);
     delete req;
+    // 每次内容/锚点刷新都清掉旧的悬停高亮：候选窗通常会跟着光标挪位置，鼠标物理
+    // 位置没变，但换到新内容/新位置后原来那个下标不再有意义，等下一次真实的
+    // WM_MOUSEMOVE 自然会算出新的悬停项（大概率是 -1，因为窗口已经挪走了）。
+    hover_index_ = -1;
 
     const int width = 240;
     const int height = kPaddingPx * 2 + kLineHeightPx * (1 + static_cast<int>(model_.items.size()));
@@ -148,6 +156,28 @@ LRESULT CALLBACK CandidateWindow::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM
         case WM_PAINT:
             if (self != nullptr) self->Paint(hwnd);
             return 0;
+        case WM_MOUSEMOVE: {
+            if (self != nullptr) {
+                self->HandleMouseMove(hwnd, POINT{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)});
+            }
+            return 0;
+        }
+        case WM_MOUSELEAVE: {
+            // 见 HandleMouseMove 里 TrackMouseEvent(TME_LEAVE) 的登记——鼠标真的移出
+            // 窗口客户区（不是移到另一行）时才会收到这个消息。
+            if (self != nullptr && self->hover_index_ != -1) {
+                self->hover_index_ = -1;
+                self->tracking_mouse_ = false;
+                ::InvalidateRect(hwnd, nullptr, TRUE);
+            }
+            return 0;
+        }
+        case WM_LBUTTONUP: {
+            if (self != nullptr) {
+                self->HandleLButtonUp(POINT{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)});
+            }
+            return 0;
+        }
         default:
             return ::DefWindowProcW(hwnd, msg, wp, lp);
     }
@@ -172,16 +202,26 @@ void CandidateWindow::Paint(HWND hwnd) {
     y += kLineHeightPx;
 
     for (std::size_t i = 0; i < model_.items.size(); ++i) {
-        RECT item_line{kPaddingPx, y, client.right - kPaddingPx, y + kLineHeightPx};
         // 智能ABC 风格空格两段式确认（armed_index，见 candidate_view_model.hpp）：
         // 这一项被"架住"但还没真正选中——画一个高亮底色区分于普通候选行，让用户在
-        // 按第二次空格/数字键确认前，能看清楚"再按一下就是它了"。
+        // 按第二次空格/数字键确认前，能看清楚"再按一下就是它了"。鼠标悬停（hover_index_）
+        // 用更浅的底色，两者都命中时 armed 优先（更明确的状态盖过纯粹的鼠标位置提示）。
+        const RECT hl = ItemRectFor(i);
+        COLORREF hl_color = 0;
+        bool draw_hl = true;
         if (model_.armed_index >= 0 && static_cast<std::size_t>(model_.armed_index) == i) {
-            RECT hl{0, y, client.right, y + kLineHeightPx};
-            const HBRUSH brush = ::CreateSolidBrush(RGB(0xCC, 0xE5, 0xFF));
+            hl_color = RGB(0xCC, 0xE5, 0xFF);
+        } else if (hover_index_ >= 0 && static_cast<std::size_t>(hover_index_) == i) {
+            hl_color = RGB(0xE8, 0xE8, 0xE8);
+        } else {
+            draw_hl = false;
+        }
+        if (draw_hl) {
+            const HBRUSH brush = ::CreateSolidBrush(hl_color);
             ::FillRect(dc, &hl, brush);
             ::DeleteObject(brush);
         }
+        RECT item_line{kPaddingPx, y, client.right - kPaddingPx, y + kLineHeightPx};
         const std::wstring text = std::to_wstring(i + 1) + L". " + model_.items[i];
         ::DrawTextW(dc, text.c_str(), static_cast<int>(text.size()), &item_line,
                    DT_LEFT | DT_SINGLELINE | DT_NOPREFIX);
@@ -190,6 +230,60 @@ void CandidateWindow::Paint(HWND hwnd) {
 
     ::SelectObject(dc, old_font);
     ::EndPaint(hwnd, &ps);
+}
+
+RECT CandidateWindow::ItemRectFor(std::size_t index) const {
+    // 跟 Paint() 里算 y 的方式完全一致（+1 跳过第一行 preedit）；整行宽度（0 到
+    // client.right），不是 Paint() 里画文字用的带左右 padding 的 item_line——
+    // 高亮/命中测试要覆盖整行，点哪都算数，不用非要点在文字上。
+    RECT client{};
+    ::GetClientRect(hwnd_, &client);
+    const int y = kPaddingPx + kLineHeightPx * (1 + static_cast<int>(index));
+    return RECT{0, y, client.right, y + kLineHeightPx};
+}
+
+int CandidateWindow::HitTest(POINT client_pt) const {
+    for (std::size_t i = 0; i < model_.items.size(); ++i) {
+        const RECT r = ItemRectFor(i);
+        if (client_pt.x >= r.left && client_pt.x < r.right && client_pt.y >= r.top &&
+            client_pt.y < r.bottom) {
+            return static_cast<int>(i);
+        }
+    }
+    return -1;
+}
+
+void CandidateWindow::HandleMouseMove(HWND hwnd, POINT client_pt) {
+    if (!tracking_mouse_) {
+        // 只有登记过 TME_LEAVE，鼠标真正移出客户区时才会收到 WM_MOUSELEAVE——不登记
+        // 的话悬停高亮会在鼠标移出窗口后卡住不消失。
+        TRACKMOUSEEVENT tme{};
+        tme.cbSize = sizeof(tme);
+        tme.dwFlags = TME_LEAVE;
+        tme.hwndTrack = hwnd;
+        if (::TrackMouseEvent(&tme)) tracking_mouse_ = true;
+    }
+    const int hit = HitTest(client_pt);
+    if (hit != hover_index_) {
+        hover_index_ = hit;
+        ::InvalidateRect(hwnd, nullptr, TRUE);
+    }
+}
+
+void CandidateWindow::HandleLButtonUp(POINT client_pt) {
+    const int hit = HitTest(client_pt);
+    if (hit >= 0) NotifyTipOfClick(hit);
+}
+
+void CandidateWindow::NotifyTipOfClick(int index) const {
+    // 见 src/shared/click-bridge-protocol/click_bridge_protocol.hpp：TIP 只在正在
+    // 组字期间维护这个窗口，系统同一时刻最多一个，找到即代表就是当前活跃的那个。
+    const HWND target = ::FindWindowExW(HWND_MESSAGE, nullptr, ipc::kClickBridgeWindowClass, nullptr);
+    if (target != nullptr) {
+        ::PostMessageW(target, ipc::kWmSelectCandidateByClick, static_cast<WPARAM>(index), 0);
+    }
+    // 找不到（正好这一瞬间组字状态已经结束）：无害地丢弃这次点击，不重试——跟其它
+    // 单向推送失败时的处理原则一致（比如 ui_bridge 写失败就放弃这次推送）。
 }
 
 }  // namespace myabc::ui
