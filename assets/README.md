@@ -14,3 +14,12 @@
 
 - `config.sample.toml`：配置样例（`config_loader` 尚未解析 TOML，见 debt-log）。
 - `punctuation.toml`：标点全角映射数据草稿（同上）。
+
+## data/
+
+- `bihuoma.txt`：笔形辅助码表（字 -> 笔形码，横1竖2撇3捺4折5）。笔画顺序原始
+  数据取自 [cnchar-order](https://github.com/theajack/cnchar)（npm 包
+  `cnchar-order@3.2.6`，MIT License，Copyright (c) theajack），按 myabc 自己的
+  规则（取前两笔、归并成五笔形分类）转换生成，覆盖约 6939 个字。转换脚本与推导
+  过程记录见 `docs/decisions/_debt-log.md` 2026-09-12。最初（M4）只有 8 个字的
+  种子表，2026-09-12 换成这份全量表。

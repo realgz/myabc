@@ -8,8 +8,10 @@
 // 即候选字的笔形码序列以用户输入的数字段为前缀才保留）。
 //
 // DECISION: 表未命中的字永远不参与过滤（返回 std::nullopt，调用方原样放行），
-// 保证空表/小表在功能上是安全的空操作，绝不会因为数据缺失而错误地滤掉正确候选——
-// 真正覆盖高频字的数据来源仍待定，见 docs/decisions/_debt-log.md 2026-09-11。
+// 保证空表/小表在功能上是安全的空操作，绝不会因为数据缺失而错误地滤掉正确候选。
+// 数据来源：assets/data/bihuoma.txt 现已从最初 8 字的种子表换成基于 cnchar-order
+// （MIT License）笔画顺序数据推算的约 6900 字全量表，见 assets/README.md 与
+// docs/decisions/_debt-log.md 2026-09-12。
 
 #ifndef MYABC_ENGINE_BIHUOMA_TABLE_HPP
 #define MYABC_ENGINE_BIHUOMA_TABLE_HPP
