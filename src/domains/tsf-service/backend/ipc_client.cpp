@@ -272,9 +272,11 @@ bool IpcClient::InitSession(std::uint32_t session_id) {
     return CallMethod(ipc::Method::kInitSession, ipc::Json{{"sessionId", session_id}}, out);
 }
 
-bool IpcClient::ProcessKey(std::uint32_t session_id, int vk, unsigned ch, ipc::Response& out) {
-    return CallMethod(ipc::Method::kProcessKey,
-                      ipc::Json{{"sessionId", session_id}, {"vk", vk}, {"ch", ch}}, out);
+bool IpcClient::ProcessKey(std::uint32_t session_id, int vk, unsigned ch, bool ctrl,
+                          ipc::Response& out) {
+    return CallMethod(
+        ipc::Method::kProcessKey,
+        ipc::Json{{"sessionId", session_id}, {"vk", vk}, {"ch", ch}, {"ctrl", ctrl}}, out);
 }
 
 bool IpcClient::SelectCandidate(std::uint32_t session_id, int index, ipc::Response& out) {

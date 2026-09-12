@@ -67,7 +67,9 @@ public:
     // M1 全量请求（每个都是"编包 -> CallWithTimeout(request_timeout_ms) -> 解包"）。
     // 失败（含超时）时 out 不变，返回 false。
     bool InitSession(std::uint32_t session_id);
-    bool ProcessKey(std::uint32_t session_id, int vk, unsigned ch, ipc::Response& out);
+    // ctrl：Ctrl 键是否按住（用户 2026-09-12 要求：Ctrl+数字不用先按空格就能直接
+    // 选字，见 src/domains/input-engine/logic/session/session.cpp DECISION）。
+    bool ProcessKey(std::uint32_t session_id, int vk, unsigned ch, bool ctrl, ipc::Response& out);
     bool SelectCandidate(std::uint32_t session_id, int index, ipc::Response& out);
     bool PageCandidates(std::uint32_t session_id, int delta, ipc::Response& out);
     bool CommitComposition(std::uint32_t session_id, ipc::Response& out);

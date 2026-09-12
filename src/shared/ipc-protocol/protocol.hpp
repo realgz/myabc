@@ -29,7 +29,10 @@ namespace myabc::ipc {
 // v6（用户 2026-09-11 明确要求的智能ABC 风格空格两段式确认，见 session.cpp DECISION）：
 // uiShow 新增 armedIndex 字段——候选数>1 时空格先"架住"候选[0]（高亮不上屏），
 // 再按一次空格/数字键才真正选中；-1 表示当前没有被架住的候选。
-inline constexpr std::uint32_t kProtocolVersion = 6;
+// v7（用户 2026-09-12 要求：不按空格也能用 Ctrl+数字直接选字，见 session.cpp
+// DECISION）：processKey 新增 ctrl 字段（bool，默认 false）——Ctrl 按住时数字键
+// 无条件当 select_keys 处理，跳过"按空格前数字是笔形码/数字模式"这层判断。
+inline constexpr std::uint32_t kProtocolVersion = 7;
 
 // 长度前缀帧：uint32 小端长度 + 该长度的 UTF-8 JSON 字节。
 inline constexpr std::uint32_t kMaxFrameBytes = 1u << 20;  // 1 MiB 上限，防御坏帧

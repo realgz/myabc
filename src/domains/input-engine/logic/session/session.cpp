@@ -25,8 +25,21 @@ Session::Session(std::uint32_t id, LibPinyinEngine& engine, SourceRegistry& regi
                  SessionOptions opts)
     : id_(id), engine_(engine), registry_(registry), opts_(std::move(opts)) {}
 
-SessionResult Session::ProcessKey(int vk, unsigned ch) {
+SessionResult Session::ProcessKey(int vk, unsigned ch, bool ctrl) {
     if (composing_) {
+        // DECISION（用户 2026-09-12 明确要求，见 docs/decisions/_debt-log.md）：
+        // Ctrl+数字任何时候都直接当 select_keys 处理，不用先按空格、不管是不是在
+        // 数字模式/笔形模式——按住 Ctrl 是用户主动明确表达"我现在就要选第几个"的
+        // 信号，优先级高于其它数字含义判断，所以放在组字态分支的最前面，抢在
+        // VK_SPACE/数字模式/笔形码这些判断之前生效。
+        if (ctrl && ch != 0) {
+            const char c = static_cast<char>(ch);
+            const auto pos = opts_.select_keys.find(c);
+            if (pos != std::string::npos) {
+                return SelectCandidate(static_cast<int>(pos));
+            }
+        }
+
         if (vk == VK_BACK) {
             if (!last_partial_sentence_.empty()) {
                 // 有部分确认约束：先撤销约束，回到基于 raw_ 的全新猜测，不吃字母。

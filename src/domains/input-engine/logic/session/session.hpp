@@ -76,7 +76,9 @@ public:
 
     // vk：Win32 虚拟键码（VK_BACK/VK_ESCAPE/VK_SPACE 等，字母数字直接用 ASCII 值）。
     // ch：若为可打印字符则是其 ASCII 值，否则 0。
-    SessionResult ProcessKey(int vk, unsigned ch);
+    // ctrl：Ctrl 键是否按住（用户 2026-09-12 要求：Ctrl+数字不用先按空格就能直接
+    // 选字，见 session.cpp DECISION）。
+    SessionResult ProcessKey(int vk, unsigned ch, bool ctrl = false);
     SessionResult SelectCandidate(int index_in_page);
     SessionResult PageCandidates(int delta);
     SessionResult CommitComposition();   // 直接确认候选[0]（当前最佳整句）

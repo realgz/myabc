@@ -107,3 +107,13 @@ M1 起，空格键的行为一直是"无条件选中当前候选[0]"（`Session:
 数字给笔形/数字模式，按过空格后数字才走 `select_keys`）、删除
 `bihuo_lead_key`（`config_defaults.hpp`/`SessionOptions`/`PinyinCandidateSource`/
 `BuildDefaultSourceRegistry`/`Dispatcher` 全部清除，不留死配置）。
+
+## 补充（2026-09-12，Ctrl+数字直选）
+
+用户进一步要求："加入即使没有按空格也可以用 ctrl+数字选择"——即在上面补充规格
+的基础上再开一个通道：**按住 Ctrl 时数字键不受 `space_armed_` 状态影响，任何
+时候都直接当 `select_keys` 选字处理**，不用先架住。这不是推翻上面的规格（普通
+数字键的行为——未架住时是笔形码/数字续写、架住后才是选字——完全不变），而是
+新增一个用 Ctrl 修饰键显式绕过"先架住"步骤的快捷通道，服务于熟悉数字直选习惯、
+想跳过两步确认的用户。详见 `docs/decisions/_debt-log.md` 2026-09-12 置顶条目
+「Ctrl+数字，不用先按空格也能直接选字」。

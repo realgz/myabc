@@ -75,6 +75,19 @@ wchar_t VkToChar(WPARAM vk, LPARAM lParam) {
     return n == 1 ? buf[0] : L'\0';
 }
 
+bool IsCtrlDown() { return (::GetKeyState(VK_CONTROL) & 0x8000) != 0; }
+
+// DECISION（用户 2026-09-12 要求：不按空格也能用 Ctrl+数字直接选字，见
+// src/domains/input-engine/logic/session/session.cpp DECISION）：Ctrl 按住时，
+// ToUnicode 对数字键通常给不出字符（数字没有标准的"控制字符"定义，不像 Ctrl+字母
+// 有 0x01-0x1A 那套），VkToChar 会返回 L'\0'，导致 key_router 认不出这是个"有意义
+// 的数字键"。VK_0..VK_9 的值恰好等于 ASCII '0'..'9'，Ctrl+数字场景下直接从 vk 合成
+// 字符，不依赖 ToUnicode 这条不可靠的路径。非 Ctrl 或非数字键时行为不变。
+wchar_t VkToCharCtrlAware(WPARAM vk, LPARAM lParam, bool ctrl) {
+    if (ctrl && vk >= '0' && vk <= '9') return static_cast<wchar_t>(vk);
+    return VkToChar(vk, lParam);
+}
+
 }  // namespace
 
 CMyabcTextService::CMyabcTextService() : key_router_(config_.candidates) { DllAddRef(); }
@@ -220,7 +233,8 @@ STDMETHODIMP CMyabcTextService::OnSetFocus(BOOL /*fForeground*/) {
 STDMETHODIMP CMyabcTextService::OnTestKeyDown(ITfContext* /*pic*/, WPARAM wParam, LPARAM lParam,
                                              BOOL* pfEaten) {
     // 不变量 3：必须本地同步答复，不问引擎。
-    const wchar_t ch = VkToChar(wParam, lParam);
+    const bool ctrl = IsCtrlDown();
+    const wchar_t ch = VkToCharCtrlAware(wParam, lParam, ctrl);
     *pfEaten = key_router_.IsInterestedKey(static_cast<int>(wParam), ch, composition_.active(),
                                           mode_manager_.mode())
                   ? TRUE
@@ -233,7 +247,8 @@ STDMETHODIMP CMyabcTextService::OnKeyDown(ITfContext* pic, WPARAM wParam, LPARAM
     mode_manager_.OnKeyDown(static_cast<int>(wParam));
 
     const int vk = static_cast<int>(wParam);
-    const wchar_t ch = VkToChar(wParam, lParam);
+    const bool ctrl = IsCtrlDown();
+    const wchar_t ch = VkToCharCtrlAware(wParam, lParam, ctrl);
     const bool composing = composition_.active();
 
     if (!key_router_.IsInterestedKey(vk, ch, composing, mode_manager_.mode())) {
@@ -261,7 +276,7 @@ STDMETHODIMP CMyabcTextService::OnKeyDown(ITfContext* pic, WPARAM wParam, LPARAM
     }
 
     ipc::Response resp;
-    const bool ok = ipc_->ProcessKey(kSessionId, vk, static_cast<unsigned>(ch), resp);
+    const bool ok = ipc_->ProcessKey(kSessionId, vk, static_cast<unsigned>(ch), ctrl, resp);
     if (!ok) {
         // M1-12：引擎无响应/超时 -> 降级，结束组字，不阻塞宿主 UI 线程。
         ::OutputDebugStringA("[myabc] processKey timeout/IO error -> 降级\n");
@@ -288,7 +303,9 @@ STDMETHODIMP CMyabcTextService::OnKeyDown(ITfContext* pic, WPARAM wParam, LPARAM
 
 STDMETHODIMP CMyabcTextService::OnTestKeyUp(ITfContext* /*pic*/, WPARAM wParam, LPARAM lParam,
                                            BOOL* pfEaten) {
-    const wchar_t ch = VkToChar(wParam, lParam);
+    // 跟 OnTestKeyDown 用同一份判定（M1 R2 debt-log 记的既有惯例），包括 Ctrl+数字
+    // 的字符合成，否则 KeyUp 可能因为判定不一致而给出跟 KeyDown 矛盾的 *pfEaten。
+    const wchar_t ch = VkToCharCtrlAware(wParam, lParam, IsCtrlDown());
     *pfEaten = key_router_.IsInterestedKey(static_cast<int>(wParam), ch, composition_.active(),
                                           mode_manager_.mode())
                   ? TRUE

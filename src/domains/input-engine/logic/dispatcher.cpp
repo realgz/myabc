@@ -91,7 +91,8 @@ Response Dispatcher::HandleProcessKey(const Request& req) {
     Session& s = sessions_.GetOrCreate(id);
     const int vk = req.params.value("vk", 0);
     const unsigned ch = req.params.value("ch", 0u);
-    return SessionResultToResponse(req.id, id, s.ProcessKey(vk, ch));
+    const bool ctrl = req.params.value("ctrl", false);
+    return SessionResultToResponse(req.id, id, s.ProcessKey(vk, ch, ctrl));
 }
 
 Response Dispatcher::HandleSelectCandidate(const Request& req) {
