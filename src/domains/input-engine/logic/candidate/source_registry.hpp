@@ -3,7 +3,10 @@
 // src/domains/input-engine/logic/candidate/source_registry.hpp
 // 依据：docs/architecture/system-overview.md §6；docs/plan/02-m1-libpinyin-quanpin-plan.md §3.2
 //
-// 顺序：english -> number(M4) -> punctuation -> pinyin（第一个 Handles() 为 true 的胜出）。
+// 顺序：extension(2026-09-12) -> english -> number(M4) -> punctuation -> pinyin
+// （第一个 Handles() 为 true 的胜出）。extension 放最前面是因为它只在真查到外部
+// 候选时才会 Handles()==true（见 extension_candidate_source.hpp DECISION），
+// 查不到会自己让路，不会抢占其它来源本该处理的输入。
 // 新增来源：加一个 CandidateSource 子类 + 在 BuildDefault() 里 push_back，不改这里的分发循环。
 
 #ifndef MYABC_ENGINE_SOURCE_REGISTRY_HPP
@@ -14,6 +17,7 @@
 
 #include "bihuoma_table.hpp"
 #include "candidate_source.hpp"
+#include "extension_bridge.hpp"
 
 namespace myabc::engine {
 
@@ -32,8 +36,12 @@ private:
 // bihuo_table/bihuo_enabled：已加载的笔形表 + config.input.bihuo_enabled，供
 // PinyinCandidateSource 的二级筛选用（M4；笔形数字何时生效由 Session 的
 // space_armed_ 门槛决定，不再需要独立触发键，见 bihuo_filter.hpp DECISION）。
+// extension_bridge：可空（测试/--selftest 不需要外部候选源）。放在最前面检查——
+// 只有真查到候选才会实际接管（见 ExtensionCandidateSource::Handles() DECISION），
+// 查不到会自然让路给后面的来源，不影响既有优先级。
 SourceRegistry BuildDefaultSourceRegistry(LibPinyinEngine& engine, const BihuoTable& bihuo_table,
-                                          bool bihuo_enabled, char number_lead_key = 'i');
+                                          bool bihuo_enabled, char number_lead_key = 'i',
+                                          ExtensionBridge* extension_bridge = nullptr);
 
 }  // namespace myabc::engine
 

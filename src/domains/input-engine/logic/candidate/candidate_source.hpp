@@ -27,6 +27,11 @@ struct InputContext {
     InputMode mode = InputMode::kChinese;
     std::string raw;         // 本次组字已累积的原始按键（拼音字母 / 待判定的单个标点字符）
     bool composing = false;  // 是否已处于组字态（影响标点是否走"取消组字直接标点"路径）
+    // 2026-09-12：外部候选源（ExtensionCandidateSource）用来判断"当前输入框是什么类型
+    // 字段"（如 "phone"），空 = 无提示。由 TIP 经 setFieldHint 告诉引擎（目前没有真实
+    // 自动检测机制——UIA 检测是 TIP 侧未来工作，这里先只搭好"提示怎么流转"这条通路，
+    // 见 docs/decisions/input-engine/20260912-extension-candidate-provider.md）。
+    std::string field_hint;
 };
 
 // 与 Session 交互的最小接口：Handles 判定这次输入该不该由自己接管；

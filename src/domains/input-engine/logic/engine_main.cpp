@@ -23,6 +23,7 @@
 #include "config_loader.hpp"
 #include "crash_guard.hpp"
 #include "dispatcher.hpp"
+#include "extension_bridge.hpp"
 #include "libpinyin_wrapper.hpp"
 #include "pipe_server.hpp"
 #include "session/session.hpp"
@@ -161,6 +162,14 @@ int main(int argc, char** argv) {
         ArgValue(argc, argv, "--ui-exe", SelfDir() + "\\" + cfg.ui.exe_path);
     myabc::engine::UiBridge ui_bridge(ui_pipe_name, ui_exe_path);
 
+    // 2026-09-12（外部候选源扩展协议，见
+    // docs/decisions/input-engine/20260912-extension-candidate-provider.md）：
+    // 跟 UiBridge 不同，这条管道不会自动拉起任何进程——第三方提供者是否安装/
+    // 运行完全是可选的，引擎这边只是把管道开着，没人连也不影响正常使用。
+    const std::string extension_pipe_name =
+        ArgValue(argc, argv, "--extension-pipe", cfg.ipc.extension_pipe_name_template);
+    myabc::engine::ExtensionBridge extension_bridge(extension_pipe_name);
+
     myabc::engine::SessionOptions session_opts = ToSessionOptions(cfg);
     // --autosave-every-n-commits：测试用小值覆盖（M5-3 验收要小到几次 commit 就能触发
     // autosave，不必等默认值 20），同款做法见下面 --idle-exit-seconds。
@@ -169,7 +178,7 @@ int main(int argc, char** argv) {
         session_opts.autosave_every_n_commits =
             static_cast<unsigned>(std::strtoul(autosave_arg.c_str(), nullptr, 10));
     }
-    myabc::engine::Dispatcher dispatcher(engine, session_opts, &ui_bridge);
+    myabc::engine::Dispatcher dispatcher(engine, session_opts, &ui_bridge, &extension_bridge);
     myabc::engine::PipeServerOptions server_opts;
     server_opts.pipe_name = pipe_name;
     server_opts.idle_exit_minutes = cfg.engine.idle_exit_minutes;

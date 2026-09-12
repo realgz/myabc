@@ -149,7 +149,7 @@ SessionResult Session::SelectCandidate(int index_in_page) {
     // 之前统一走 Choose() 导致这类候选要么选不中（下标查不到，静默卡在组字态），要么
     // （笔形过滤后）选中的字跟显示的对不上（下标错位）。
     if (!current_source_uses_engine_choose_) {
-        std::string text = candidates_[global_index].text;
+        std::string text = EffectiveCommitText(candidates_[global_index]);
         ResetToIdle();
         return BuildViewResult(true, true, std::move(text));
     }
@@ -206,7 +206,7 @@ SessionResult Session::CommitComposition() {
         // （libpinyin 从没解析过这个 raw_），直接取候选[0]，跟 Recompute() 的
         // AutoCommit 分支同一套兜底逻辑（M5 前修复真 bug，见 _debt-log.md）。不训练——
         // 这类候选不是拼音句子，pinyin_remember_user_input 无从谈起。
-        text = candidates_.empty() ? raw_ : candidates_.front().text;
+        text = candidates_.empty() ? raw_ : EffectiveCommitText(candidates_.front());
     }
     ResetToIdle();
     return BuildViewResult(true, true, text);
@@ -220,10 +220,12 @@ SessionResult Session::CancelComposition() {
 
 void Session::FocusOut() { ResetToIdle(); }
 
+void Session::SetFieldHint(std::string hint) { field_hint_ = std::move(hint); }
+
 SessionResult Session::Recompute() {
     last_partial_sentence_.clear();
     space_armed_ = false;   // raw_ 变了，之前架着的候选（如果有）已经过期
-    const InputContext ctx{InputMode::kChinese, raw_, composing_};
+    const InputContext ctx{InputMode::kChinese, raw_, composing_, field_hint_};
     CandidateSource* src = registry_.Resolve(ctx);
     if (src == nullptr) {
         ResetToIdle();
@@ -235,7 +237,7 @@ SessionResult Session::Recompute() {
     page_index_ = 0;
 
     if (src->AutoCommit()) {
-        std::string text = candidates_.empty() ? raw_ : candidates_.front().text;
+        std::string text = candidates_.empty() ? raw_ : EffectiveCommitText(candidates_.front());
         ResetToIdle();
         return BuildViewResult(true, true, text);
     }

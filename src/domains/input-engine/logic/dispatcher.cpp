@@ -19,7 +19,8 @@ std::uint32_t SessionIdOf(const Json& params) {
 }
 }  // namespace
 
-Dispatcher::Dispatcher(LibPinyinEngine& engine, SessionOptions opts, UiBridge* ui_bridge)
+Dispatcher::Dispatcher(LibPinyinEngine& engine, SessionOptions opts, UiBridge* ui_bridge,
+                       ExtensionBridge* extension_bridge)
     : engine_(engine),
       sessions_(engine, registry_, opts),   // 绑定 registry_ 的引用；内容随后在函数体里填
       ui_bridge_(ui_bridge),
@@ -29,7 +30,7 @@ Dispatcher::Dispatcher(LibPinyinEngine& engine, SessionOptions opts, UiBridge* u
     // 对象的引用（不是内容快照），赋值后 sessions_ 看到的就是新内容。
     if (!opts.bihuo_data_path.empty()) bihuo_table_.LoadFromFile(opts.bihuo_data_path);
     registry_ = BuildDefaultSourceRegistry(engine, bihuo_table_, opts.bihuo_enabled,
-                                           opts.number_lead_key);
+                                           opts.number_lead_key, extension_bridge);
 }
 
 Response Dispatcher::Handle(const Request& req) {
@@ -54,6 +55,8 @@ Response Dispatcher::Handle(const Request& req) {
             return Response::Ok(req.id, Json::object());   // 无需动作
         case Method::kSetCaretRect:
             return HandleSetCaretRect(req);
+        case Method::kSetFieldHint:
+            return HandleSetFieldHint(req);
         case Method::kUserDictExport:
             return HandleUserDictExport(req);
         case Method::kUserDictImport:
@@ -156,12 +159,21 @@ Response Dispatcher::HandleSetCaretRect(const Request& req) {
         if (!(rect.x == 0 && rect.y == 0 && rect.w == 0 && rect.h == 0)) {
             std::vector<CandidateItem> items;
             items.reserve(it->second.candidates.size());
-            for (const auto& c : it->second.candidates) items.push_back(CandidateItem{c.text, false});
+            for (const auto& c : it->second.candidates) {
+                items.push_back(CandidateItem{.text = c.text, .is_sentence = false});
+            }
 
             ui_bridge_->PushShow(id, rect, it->second.preedit, items, it->second.page_index,
                                 it->second.page_size, it->second.page_total, it->second.armed_index);
         }
     }
+    return Response::Ok(req.id, Json::object());
+}
+
+Response Dispatcher::HandleSetFieldHint(const Request& req) {
+    const auto id = SessionIdOf(req.params);
+    Session& s = sessions_.GetOrCreate(id);
+    s.SetFieldHint(req.params.value("hint", std::string()));
     return Response::Ok(req.id, Json::object());
 }
 

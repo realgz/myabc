@@ -38,7 +38,24 @@ struct CandidateItem {
     // 的下标会跟用户看到的候选错位（M5 前修复的真 bug，见 _debt-log.md）。只有
     // CandidateSource::UsesEngineChoose()==true 的来源需要关心这个字段。
     int engine_index = -1;
+    // 空（默认）= 选中/提交时用 text 本身上屏（现有所有来源的行为）。非空 = 显示用
+    // text，实际上屏用这个字段——外部候选源（ExtensionCandidateSource，2026-09-12）
+    // 需要这个能力：候选显示"张三"，选中后上屏对应的电话号码。见
+    // docs/decisions/input-engine/20260912-extension-candidate-provider.md。
+    // 用 = {} 显式给默认值（不是只靠 std::string 自身默认构造）：GCC
+    // -Wmissing-field-initializers 只放过"有显式默认成员初始化式"的字段被
+    // 聚合初始化列表省略，光靠类型自身能默认构造不算数——加上这个才能让既有
+    // 调用点（如 CandidateItem{.text=..., .is_sentence=...}，省略这个字段）
+    // 继续保持 0 警告。
+    std::string commit_text = {};
 };
+
+// 选中/提交这一项时实际应该上屏的文本——commit_text 为空时就是 text 本身，见
+// CandidateItem::commit_text 注释。所有读 candidates_[i].text 来"上屏"的地方
+// （而不是"显示"）都应该改用这个，别直接读 .text。
+inline const std::string& EffectiveCommitText(const CandidateItem& item) {
+    return item.commit_text.empty() ? item.text : item.commit_text;
+}
 
 class LibPinyinEngine {
 public:

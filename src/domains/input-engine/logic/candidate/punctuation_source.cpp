@@ -44,7 +44,7 @@ bool PunctuationSource::Handles(const InputContext& ctx) const {
 
 std::vector<CandidateItem> PunctuationSource::Produce(const InputContext& ctx) {
     for (const auto& m : kMap) {
-        if (m.ascii == ctx.raw[0]) return {CandidateItem{m.utf8_full_width, false}};
+        if (m.ascii == ctx.raw[0]) return {CandidateItem{.text = m.utf8_full_width, .is_sentence = false}};
     }
     return {};
 }

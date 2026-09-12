@@ -64,7 +64,10 @@ int main() {
         "窝\t1\n");
 
     std::vector<CandidateItem> candidates = {
-        {"我", false}, {"握", false}, {"窝", false}, {"卧", false} /* 未收录 */,
+        {.text = "我", .is_sentence = false},
+        {.text = "握", .is_sentence = false},
+        {.text = "窝", .is_sentence = false},
+        {.text = "卧", .is_sentence = false} /* 未收录 */,
     };
 
     {

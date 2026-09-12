@@ -11,7 +11,7 @@ bool EnglishPassthroughSource::Handles(const InputContext& ctx) const {
 }
 
 std::vector<CandidateItem> EnglishPassthroughSource::Produce(const InputContext& ctx) {
-    return {CandidateItem{ctx.raw, /*is_sentence=*/false}};
+    return {CandidateItem{.text = ctx.raw, .is_sentence = false}};
 }
 
 }  // namespace myabc::engine

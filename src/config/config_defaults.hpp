@@ -28,6 +28,11 @@ struct IpcConfig {
     std::string pipe_name_template = R"(\\.\pipe\myabc-engine-{sid})";
     // M2（plan 03 §3.2）：引擎 -> myabc-ui 的单向推送通道，独立命名管道。
     std::string ui_pipe_name_template = R"(\\.\pipe\myabc-ui-{sid})";
+    // 2026-09-12（外部候选源扩展协议，见
+    // docs/decisions/input-engine/20260912-extension-candidate-provider.md）：
+    // 第三方候选提供者（如闭源的 inputserver 项目，不属于本项目）连接的独立
+    // 命名管道，跟上面两条都不共用。
+    std::string extension_pipe_name_template = R"(\\.\pipe\myabc-extension-{sid})";
     // 首次连接（含拉起引擎）总超时。DECISION（真机反馈"新机器上记事本卡顿+没候选"，
     // 见 docs/decisions/_debt-log.md 2026-09-11）：引擎冷启动要先跑完
     // pinyin_init()（加载全部词库/模型，本机实测约几十毫秒，但更慢的磁盘/首次

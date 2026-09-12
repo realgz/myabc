@@ -85,6 +85,12 @@ public:
     SessionResult CancelComposition();
     void FocusOut();   // M1：清空状态，不跨窗口保留（见 DECISION 注释）
 
+    // 2026-09-12：TIP 告诉引擎"当前输入框大概是什么类型字段"（如 "phone"），供
+    // ExtensionCandidateSource 判断要不要问外部候选源。空字符串 = 清除提示。
+    // 不触发重新组字/不影响正在进行的组字——下次 Recompute()（新按键）才会用到新值，
+    // 见 session.cpp DECISION。
+    void SetFieldHint(std::string hint);
+
 private:
     SessionResult Recompute();     // 用 raw_ 通过 registry_ 重新产出候选，page_index 归零
     SessionResult BuildViewResult(bool handled, bool has_commit = false,
@@ -113,6 +119,7 @@ private:
     // 决定 SelectCandidate/CommitComposition 该不该查 libpinyin（见 session.cpp DECISION，
     // M5 前修复：数字/金额候选选不中的真 bug）。Recompute() 里跟 candidates_ 一起刷新。
     bool current_source_uses_engine_choose_ = false;
+    std::string field_hint_;   // 见 SetFieldHint()
 };
 
 }  // namespace myabc::engine

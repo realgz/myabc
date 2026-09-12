@@ -32,7 +32,14 @@ namespace myabc::ipc {
 // v7（用户 2026-09-12 要求：不按空格也能用 Ctrl+数字直接选字，见 session.cpp
 // DECISION）：processKey 新增 ctrl 字段（bool，默认 false）——Ctrl 按住时数字键
 // 无条件当 select_keys 处理，跳过"按空格前数字是笔形码/数字模式"这层判断。
-inline constexpr std::uint32_t kProtocolVersion = 7;
+// v8（用户 2026-09-12 要求"开始实现企业能力"，见
+// docs/decisions/input-engine/20260912-extension-candidate-provider.md）：
+// 新增外部候选源扩展协议——setFieldHint（TIP -> 引擎，告诉引擎当前输入框大概是
+// 什么类型字段，供第三方候选提供者判断要不要接管）；registerExtension（第三方
+// 提供者 -> 引擎，声明自己能处理哪些 tag，走一条独立的命名管道
+// myabc-extension-{sid}，不复用 TIP<->引擎那条）；queryCandidates（引擎 ->
+// 第三方提供者，在同一条 extension 管道上反向发起，问它要候选）。
+inline constexpr std::uint32_t kProtocolVersion = 8;
 
 // 长度前缀帧：uint32 小端长度 + 该长度的 UTF-8 JSON 字节。
 inline constexpr std::uint32_t kMaxFrameBytes = 1u << 20;  // 1 MiB 上限，防御坏帧
@@ -72,6 +79,13 @@ enum class Method : std::uint8_t {
     kUserDictExport,   // params: {path}
     kUserDictImport,   // params: {path}
     kUserDictClear,    // params: {}
+    // v8（外部候选源扩展协议，见上方版本历史注释）
+    kSetFieldHint,       // TIP -> 引擎：params: {sessionId, hint}
+    kRegisterExtension,  // 第三方提供者 -> 引擎（myabc-extension-{sid} 管道）：
+                        // params: {tags: [string,...]}
+    kQueryCandidates,    // 引擎 -> 第三方提供者（同一条管道反向发起）：
+                        // params: {tag, raw, sessionId}；
+                        // 响应 result: {candidates: [{text, commitText?}, ...]}
 };
 
 const char* MethodName(Method m) noexcept;   // 线格式名；kUnknown -> ""

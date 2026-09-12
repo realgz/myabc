@@ -23,6 +23,7 @@ add_library(myabc-engine-core STATIC
     logic/candidate/punctuation_source.cpp
     logic/candidate/number_currency_source.cpp
     logic/candidate/bihuo_filter.cpp
+    logic/candidate/extension_candidate_source.cpp
     logic/candidate/source_registry.cpp
     logic/charset/charset_filter.cpp
     logic/session/session.cpp
@@ -31,6 +32,7 @@ add_library(myabc-engine-core STATIC
     backend/single_instance.cpp
     backend/libpinyin_wrapper.cpp
     backend/ui_bridge.cpp
+    backend/extension_bridge.cpp
     backend/crash_guard.cpp
     backend/bihuoma_table.cpp
 )

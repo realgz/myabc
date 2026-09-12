@@ -24,6 +24,7 @@
 
 #include "bihuoma_table.hpp"
 #include "candidate/source_registry.hpp"
+#include "extension_bridge.hpp"
 #include "json_codec.hpp"
 #include "learning_policy.hpp"
 #include "libpinyin_wrapper.hpp"
@@ -38,8 +39,10 @@ public:
     // engine 即使 Init() 失败（!engine.ready()）也必须是个有效对象——LibPinyinEngine 的
     // 各方法在未就绪时全部安全地空操作/返回空结果，因此 processKey 等会自然退化为
     // handled:false，不崩溃，等价 M0 占位行为。
-    // ui_bridge 可空（测试/--selftest 不需要候选窗）。
-    Dispatcher(LibPinyinEngine& engine, SessionOptions opts, UiBridge* ui_bridge = nullptr);
+    // ui_bridge 可空（测试/--selftest 不需要候选窗）。extension_bridge 同样可空
+    // （测试/--selftest 不需要外部候选源，见 extension_bridge.hpp）。
+    Dispatcher(LibPinyinEngine& engine, SessionOptions opts, UiBridge* ui_bridge = nullptr,
+              ExtensionBridge* extension_bridge = nullptr);
 
     ipc::Response Handle(const ipc::Request& req);
 
@@ -60,6 +63,7 @@ private:
     ipc::Response HandleCancelComposition(const ipc::Request& req);
     ipc::Response HandleFocusOut(const ipc::Request& req);
     ipc::Response HandleSetCaretRect(const ipc::Request& req);
+    ipc::Response HandleSetFieldHint(const ipc::Request& req);
     ipc::Response HandleUserDictExport(const ipc::Request& req);
     ipc::Response HandleUserDictImport(const ipc::Request& req);
     ipc::Response HandleUserDictClear(const ipc::Request& req);

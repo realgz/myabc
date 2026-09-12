@@ -21,7 +21,7 @@ cmake_minimum_required(VERSION 3.25)
 # installer/myabc.iss 的 MyAppVersion 是独立的 Inno Setup 脚本变量，没法直接读
 # CMake 变量，发新版本时两处要一起手动改——myabc.iss 那一行旁也有指回这里的注释。
 project(myabc
-    VERSION 0.1.8
+    VERSION 0.1.9
     DESCRIPTION "Smart-ABC-style Chinese pinyin IME for Windows 10/11 (TSF)"
     HOMEPAGE_URL "https://github.com/realgz/myabc"
     LANGUAGES CXX C

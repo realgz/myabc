@@ -39,20 +39,20 @@ std::vector<CandidateItem> NumberCurrencySource::Produce(const InputContext& ctx
     if (body.find('.') == std::string::npos) {
         // 整数：数量读法 + 逐位读法(年份式) + 大写金额(整) + 原样。
         if (const auto n = ParseInteger(body)) {
-            items.push_back(CandidateItem{PlaceValueChinese(*n), false});
+            items.push_back(CandidateItem{.text = PlaceValueChinese(*n), .is_sentence = false});
             if (const auto digit_reading = DigitByDigitChinese(body)) {
-                items.push_back(CandidateItem{*digit_reading, false});
+                items.push_back(CandidateItem{.text = *digit_reading, .is_sentence = false});
             }
             if (const auto cents = ParseDecimalToCents(body)) {
-                items.push_back(CandidateItem{UppercaseCurrency(*cents), false});
+                items.push_back(CandidateItem{.text = UppercaseCurrency(*cents), .is_sentence = false});
             }
         }
     } else if (const auto cents = ParseDecimalToCents(body)) {
         // 带小数点：视为金额，只给大写金额（数量/逐位读法对小数没有约定展示形式）。
-        items.push_back(CandidateItem{UppercaseCurrency(*cents), false});
+        items.push_back(CandidateItem{.text = UppercaseCurrency(*cents), .is_sentence = false});
     }
 
-    items.push_back(CandidateItem{body, false});   // 原样阿拉伯数字兜底，永远可选
+    items.push_back(CandidateItem{.text = body, .is_sentence = false});   // 原样阿拉伯数字兜底，永远可选
     return items;
 }
 

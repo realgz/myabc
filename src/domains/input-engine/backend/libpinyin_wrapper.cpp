@@ -124,8 +124,8 @@ void LibPinyinEngine::RecomputeCandidates() {
         lookup_candidate_type_t type = NORMAL_CANDIDATE;
         ::pinyin_get_candidate_type(inst, c, &type);
 
-        candidates_.push_back(CandidateItem{s ? std::string(s) : std::string(),
-                                            type == NBEST_MATCH_CANDIDATE});
+        candidates_.push_back(CandidateItem{.text = s ? std::string(s) : std::string(),
+                                            .is_sentence = type == NBEST_MATCH_CANDIDATE});
         raw_candidates_.push_back(reinterpret_cast<_lookup_candidate_t*>(c));
     }
 }
