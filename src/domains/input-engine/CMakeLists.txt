@@ -53,6 +53,21 @@ target_link_libraries(myabc-engine-core PRIVATE advapi32 dbghelp)
 myabc_set_warnings(myabc-engine-core)
 
 # --- myabc-engine.exe -----------------------------------------------------
+# DECISION（2026-09-12，"导入更多的 versioninfo"实施中发现的真实冲突）：
+# engine.rc（跟其它 3 个可执行文件一样的 VERSIONINFO 资源）特意 NOT 加进这个
+# target 的源列表——加了会导致链接失败：
+#   ld.exe: .rsrc merge failure: duplicate leaf: type: 10 (VERSION) name: 1 lang: 409
+# 根因：下面 target_link_options 里 `-Wl,-Bstatic,--whole-archive -lwinpthread`
+# 是 M0 就有的决定（降低运行时 DLL 依赖，见 docs/plan/00-toolchain-and-build-plan.md
+# §3.4）——`--whole-archive` 会强制把 libwinpthread.a 里*所有*目标文件都链进来，
+# 包括它自带的一个 version.o（自己的 VERSION 资源，name=1 lang=0x409，跟我们自己
+# 想加的资源撞了同一个键）。两边都是 name=1（Win32 版本资源 API 按固定 ID=1 查找，
+# 不能改），只能改语言 ID 来避开冲突，但那样 GetFileVersionInfo 按语言查找时会
+# 出现"不确定选中哪一份"的新问题——不如干脆不碰这条链接选项（M0 的决定不是这次
+# 任务要动的范围），myabc-engine.exe 保持不带 VERSIONINFO。
+# 影响可接受：myabc-engine.exe 是后台进程，用户从不会在资源管理器里双击它/看它的
+# 属性页，四个可执行文件里"最不需要"这份元数据的恰好就是它。engine.rc 文件本身
+# 保留在仓库里（连同这条 DECISION），供以后如果 winpthread 静态链方式变了再启用。
 add_executable(myabc-engine logic/engine_main.cpp)
 target_link_libraries(myabc-engine PRIVATE myabc::engine-core)
 myabc_set_warnings(myabc-engine)

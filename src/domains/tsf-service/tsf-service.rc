@@ -3,10 +3,54 @@
 // src/domains/tsf-service/tsf-service.rc --- myabc-tip.dll 资源
 //
 // 依据：docs/plan/01-m0-tsf-skeleton-plan.md §3.6（assets/icons/myabc.ico）
+//       docs/decisions/_debt-log.md 2026-09-12（"导入更多的 versioninfo"）
 //
 // 只有一个图标资源（IDI_MYABC 排在模块里的第 0 个 icon group），
 // ITfInputProcessorProfiles::AddLanguageProfile 的 IconIndex 用 0 引用它。
+//
+// VERSIONINFO：字符串字段全用英文，不用中文——GNU windres（myabc-engine.exe 那
+// 份 .rc 用它编）处理 .rc 里的非 ASCII 文本容易碰到跟 MSVC rc.exe 不一致的代码页
+// 问题（这个项目这次会话已经踩过好几次 GBK/UTF-8 乱码坑，见 debt-log），VERSIONINFO
+// 纯粹是给 Explorer 属性页/AV 扫描看的元数据，没有必要为了双语冒这个险。
+
+// DECISION（踩坑记录）：VS_VERSION_INFO/VFT_DLL/VOS_NT_WINDOWS32 这些符号由
+// <winver.h> 定义（数值 VS_VERSION_INFO=1，是 Win32 版本资源 API 按固定资源 ID=1
+// 查找的约定）——漏了这个 include，RC 编译器会把 VS_VERSION_INFO 当成一个普通
+// 资源名字符串编译，字节确实写进了 .res/最终文件（strings 能搜到），但
+// GetFileVersionInfo/资源管理器属性页按数字 ID 1 查找，找不到，表现为
+// "resource 里有数据，但 Explorer/PowerShell 的 VersionInfo 读出来全是空"。
+#include <winver.h>
+#include "myabc/version.h"
 
 #define IDI_MYABC 1
 
 IDI_MYABC ICON "../../../assets/icons/myabc.ico"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION MYABC_VERSION_MAJOR,MYABC_VERSION_MINOR,MYABC_VERSION_PATCH,0
+ PRODUCTVERSION MYABC_VERSION_MAJOR,MYABC_VERSION_MINOR,MYABC_VERSION_PATCH,0
+ FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
+ FILEFLAGS 0x0L
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_DLL
+ FILESUBTYPE VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "CompanyName", "myabc project"
+            VALUE "FileDescription", "myabc TSF Text Input Processor"
+            VALUE "FileVersion", MYABC_VERSION_STRING
+            VALUE "InternalName", "myabc-tip"
+            VALUE "LegalCopyright", "Copyright (C) 2026 myabc project. Licensed under GPL-3.0-or-later."
+            VALUE "OriginalFilename", "myabc-tip.dll"
+            VALUE "ProductName", "myabc Smart Pinyin IME"
+            VALUE "ProductVersion", MYABC_VERSION_STRING
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

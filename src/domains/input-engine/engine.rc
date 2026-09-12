@@ -1,0 +1,51 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// src/domains/input-engine/engine.rc --- myabc-engine.exe 资源
+//
+// **当前没有被链接进 myabc-engine.exe**——见
+// src/domains/input-engine/CMakeLists.txt 里 add_executable(myabc-engine ...)
+// 那一行旁边的 DECISION：链接时跟 --whole-archive 强链的 libwinpthread.a 自带的
+// version.o 资源撞了同一个 (VERSION, name=1, lang=0x409) 键，ld 报
+// ".rsrc merge failure: duplicate leaf"。内容留着，等以后有办法绕开这个冲突
+// （或 winpthread 静态链方式变了）再启用。
+//
+// 依据：docs/decisions/_debt-log.md 2026-09-12（"导入更多的 versioninfo"）
+// VERSIONINFO 用英文字符串的理由见
+// src/domains/tsf-service/tsf-service.rc 头注释——这份 .rc 本身就是用 GNU
+// windres（MinGW 工具链）编的，是那条理由最直接适用的一个。
+// 纯后台进程，不带图标（从不在任务栏/Alt-Tab 露面）。
+
+// VS_VERSION_INFO/VFT_APP/VOS_NT_WINDOWS32 来自 <winver.h>——漏了这个 include 的
+// 踩坑记录见 src/domains/tsf-service/tsf-service.rc 头注释。MinGW-w64 也带这份
+// 头（跟 MSVC SDK 定义一致），windres 处理方式相同。
+#include <winver.h>
+#include "myabc/version.h"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION MYABC_VERSION_MAJOR,MYABC_VERSION_MINOR,MYABC_VERSION_PATCH,0
+ PRODUCTVERSION MYABC_VERSION_MAJOR,MYABC_VERSION_MINOR,MYABC_VERSION_PATCH,0
+ FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
+ FILEFLAGS 0x0L
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_APP
+ FILESUBTYPE VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "CompanyName", "myabc project"
+            VALUE "FileDescription", "myabc Pinyin Conversion Engine (libpinyin-based)"
+            VALUE "FileVersion", MYABC_VERSION_STRING
+            VALUE "InternalName", "myabc-engine"
+            VALUE "LegalCopyright", "Copyright (C) 2026 myabc project. Licensed under GPL-3.0-or-later."
+            VALUE "OriginalFilename", "myabc-engine.exe"
+            VALUE "ProductName", "myabc Smart Pinyin IME"
+            VALUE "ProductVersion", MYABC_VERSION_STRING
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

@@ -13,10 +13,17 @@
 
 cmake_minimum_required(VERSION 3.25)
 
+# DECISION（用户 2026-09-12 要求"导入更多的 versioninfo"，见
+# docs/decisions/_debt-log.md）：这里的 VERSION 是全项目唯一的版本号来源——
+# src/config/version.h.in 从它 configure_file 生成 myabc/version.h，四个可执行
+# 文件（myabc-tip.dll/myabc-ui.exe/myabc-engine.exe/myabc-deployer.exe）的
+# VERSIONINFO 资源都 #include 这份生成的头，不再各自硬编码一份版本号字符串。
+# installer/myabc.iss 的 MyAppVersion 是独立的 Inno Setup 脚本变量，没法直接读
+# CMake 变量，发新版本时两处要一起手动改——myabc.iss 那一行旁也有指回这里的注释。
 project(myabc
-    VERSION 0.0.0
+    VERSION 0.1.8
     DESCRIPTION "Smart-ABC-style Chinese pinyin IME for Windows 10/11 (TSF)"
-    HOMEPAGE_URL "https://github.com/az/myabc"
+    HOMEPAGE_URL "https://github.com/realgz/myabc"
     LANGUAGES CXX C
 )
 

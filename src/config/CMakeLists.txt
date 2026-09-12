@@ -13,6 +13,17 @@ add_library(myabc::config ALIAS myabc-config)
 target_include_directories(myabc-config PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 myabc_set_warnings(myabc-config)
 
+# --- myabc::version —— 版本号头（两套工具链都可用，四个可执行文件的 .rc 共用）--
+# 见 version.h.in 文件头注释：单一来源是根 CMakeLists.txt 的 project() VERSION。
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/version.h.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/myabc/version.h"
+    @ONLY
+)
+add_library(myabc-version INTERFACE)
+add_library(myabc::version ALIAS myabc-version)
+target_include_directories(myabc-version INTERFACE "${CMAKE_CURRENT_BINARY_DIR}/generated")
+
 # --- myabc::guids —— GUID 定义（需要 Win32 头，仅 MSVC 侧领域使用）----------
 if(MYABC_TOOLCHAIN STREQUAL "msvc")
     add_library(myabc-guids STATIC guids.cpp)

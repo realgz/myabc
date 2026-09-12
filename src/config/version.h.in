@@ -1,0 +1,21 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// src/config/version.h.in --- 版本号（由 CMake configure_file 生成，不要手改）
+//
+// 单一版本号来源：根 CMakeLists.txt 的 project(myabc VERSION ...)（见该行旁的
+// DECISION 注释）。四个可执行文件（myabc-tip.dll / myabc-ui.exe /
+// myabc-engine.exe / myabc-deployer.exe）的 .rc VERSIONINFO 资源都
+// #include "myabc/version.h" 用这几个宏，不再各自硬编码一份版本号字符串。
+//
+// installer/myabc.iss 的 MyAppVersion 是独立的 Inno Setup 脚本变量，读不到这里，
+// 发新版本时两处需要一起手动改（myabc.iss 那行旁也有指回这里的注释）。
+
+#ifndef MYABC_CONFIG_VERSION_H
+#define MYABC_CONFIG_VERSION_H
+
+#define MYABC_VERSION_MAJOR @PROJECT_VERSION_MAJOR@
+#define MYABC_VERSION_MINOR @PROJECT_VERSION_MINOR@
+#define MYABC_VERSION_PATCH @PROJECT_VERSION_PATCH@
+#define MYABC_VERSION_STRING "@PROJECT_VERSION@"
+
+#endif  // MYABC_CONFIG_VERSION_H
