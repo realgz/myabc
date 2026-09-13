@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <memory>
 #include <unordered_map>
+#include <vector>
 
 #include "session.hpp"
 
@@ -25,6 +26,16 @@ public:
     // 不存在则创建。
     Session& GetOrCreate(std::uint32_t session_id);
     void Remove(std::uint32_t session_id);
+
+    // 2026-09-13：切换全局方案（docs/plan/08-wubi-input-scheme-plan.md §4.4"方案粒度：
+    // 全局"）。更新 opts_（影响后续 GetOrCreate 新建的 Session），并对每个既有 session
+    // 调用 SetScheme()。返回值：切换前正处于组字态的 session id 列表（Dispatcher 用来
+    // 对这些 id 主动推 uiHide）。
+    std::vector<std::uint32_t> SetSchemeForAll(InputScheme scheme);
+
+    // 供 Dispatcher::HandleHello 上报当前方案，供 TIP 侧启动/重连时同步语言栏
+    // 显示状态（TIP 本地并不持久化方案选择，权威状态始终在引擎侧）。
+    InputScheme CurrentScheme() const noexcept { return opts_.scheme; }
 
 private:
     LibPinyinEngine& engine_;

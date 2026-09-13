@@ -27,7 +27,12 @@ bool KeyRouter::IsMappedPunctuationAscii(wchar_t ch) noexcept {
     return false;
 }
 
-bool KeyRouter::IsInterestedKey(int vk, wchar_t ch, bool composing, InputMode mode) const noexcept {
+bool KeyRouter::IsInterestedKey(int vk, wchar_t ch, bool composing, InputMode mode, bool ctrl,
+                                bool shift) const noexcept {
+    // 方案切换热键优先于一切其它判断——包括英文模式（用户可能想从英文模式直接
+    // 切到五笔/普通拼音打字），见类头 2026-09-13 DECISION。
+    if (scheme_hotkey_vk_ != 0 && vk == scheme_hotkey_vk_ && ctrl && shift) return true;
+
     if (mode == InputMode::kEnglish) return false;   // M1-9：直接放行
 
     if (composing) {

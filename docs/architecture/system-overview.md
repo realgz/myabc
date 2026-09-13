@@ -179,7 +179,7 @@ sessionId 由 TIP 每个文档上下文分配，隔离多窗口并发组字。
 |---|---|---|
 | InputSchemeParser | QuanpinParser / JianpinParser / HunpinParser / (预留 ShuangpinParser) | 新增类 + 注册表登记，不改分发 |
 | DbBackend | BerkeleyDbBackend / KyotoCabinetBackend | 同上（编译期择一，接口隔离） |
-| CandidateSource | PinyinCandidateSource / NumberCurrencyCandidateSource / PunctuationSource / EnglishPassthroughSource | 新增类 + registry.resolve(context) |
+| CandidateSource | PinyinCandidateSource / NumberCurrencyCandidateSource / PunctuationSource / EnglishPassthroughSource / ExtensionCandidateSource（2026-09-12） / WubiCandidateSource（2026-09-13） | 新增类 + registry.resolve(context) |
 | CharsetFilter | Gb2312Filter / GbkFilter / UnicodeFilter | 同上 |
 | IpcTransport / IpcCodec | NamedPipeTransport / JsonCodec（预留 SharedMemoryTransport / BinaryCodec） | 同上 |
 

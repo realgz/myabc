@@ -71,6 +71,9 @@ struct InputConfig {
     // quanpin（严格全拼，关闭简拼/混拼）/jianpin/hunpin（简拼与混拼，libpinyin 用同一个
     // PINYIN_INCOMPLETE 开关处理两者，见 docs/decisions/_debt-log.md 2026-09-11）/
     // shuangpin（预留，未实现）。M3 起默认 hunpin，对标智能ABC习惯（plan 04 §3.5）。
+    // 注意：本字段只管拼音"方案家族"内部的严格度（全拼/简拼/混拼），是否使用拼音
+    // 还是五笔由下面的 method 字段决定，两者是正交维度，不要混淆
+    // （docs/decisions/input-engine/20260913-wubi-input-scheme.md）。
     std::string scheme = "hunpin";
     // 模糊音开关名集合，取值：c_ch/s_sh/z_zh/f_h/g_k/l_n/l_r/an_ang/en_eng/in_ing/all
     // （对应 libpinyin PinyinAmbiguity2 位，见 backend/libpinyin_wrapper.cpp 的映射表）。
@@ -84,6 +87,24 @@ struct InputConfig {
     // （数字选字）改为只在按过一次空格之后才生效，笔形数字在此之前一直有效，两者
     // 天然不冲突，见 session.cpp 组字态路由。
     bool bihuo_enabled = true;
+
+    // 2026-09-13（docs/decisions/input-engine/20260913-wubi-input-scheme.md）：
+    // 三选一输入方案——smartabc（默认，本字段所有既有语义原样保留）/pinyin（普通
+    // 拼音：同一个 libpinyin 引擎，但数字键任何时候直接选字、空格任何时候立即选中
+    // 候选[0]，不架住）/wubi（候选来源换成 WubiCandidateSource，按键路由跟 pinyin
+    // 共用同一套"数字直选、空格直选"逻辑）。method==pinyin/wubi 时，上面的
+    // scheme/fuzzy/number_lead_key/bihuo_enabled 字段结构性地不被使用（路由改变
+    // 本身就让笔形码/数字模式没有触发条件，不需要额外开关关闭）。
+    std::string method = "smartabc";
+
+    // TIP 侧识别的切换热键描述串，格式 "ctrl+shift+<字母>"（tsf-service 侧的
+    // scheme_hotkey_detector 解析，不在 src/config 里做字符串解析逻辑，本字段只是
+    // 反硬编码落点本身）。三态循环切换：smartabc -> pinyin -> wubi -> smartabc。
+    std::string method_switch_hotkey = "ctrl+shift+w";
+    // 注意：五笔编码表路径（wubi86.txt）不在这里建模——跟 bihuoma.txt 走同一条既有
+    // 惯例：SessionOptions::bihuo_data_path 从来不是 Config 字段，而是 engine_main.cpp
+    // 的 ToSessionOptions() 里用 SelfDir() 拼出来的安装期相对路径常量，wubi_data_path
+    // 同样如此（见 engine_main.cpp）。
 };
 
 struct OutputConfig {

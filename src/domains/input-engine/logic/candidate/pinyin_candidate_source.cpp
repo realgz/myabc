@@ -11,7 +11,13 @@
 namespace myabc::engine {
 
 bool PinyinCandidateSource::Handles(const InputContext& ctx) const {
-    return ctx.mode == InputMode::kChinese && !ctx.raw.empty();
+    // DECISION: docs/decisions/input-engine/20260913-wubi-input-scheme.md
+    // kSmartAbc 和 kPlainPinyin 共用同一个 libpinyin 候选来源（按键路由不同，见
+    // Session::RouteDigitKeyPinyin/RouteDigitKeyDirect），kWubi 必须走
+    // WubiCandidateSource，否则五笔的字母 raw（如 "aet"）会被这里"抢走"。
+    return ctx.mode == InputMode::kChinese &&
+           (ctx.scheme == InputScheme::kSmartAbc || ctx.scheme == InputScheme::kPlainPinyin) &&
+           !ctx.raw.empty();
 }
 
 std::vector<CandidateItem> PinyinCandidateSource::Produce(const InputContext& ctx) {

@@ -62,7 +62,10 @@ public:
     bool CallWithTimeout(const ipc::Request& req, ipc::Response& resp, std::uint32_t timeout_ms);
 
     // 便捷：发 hello，返回引擎版本串（失败为空）。用 connect_timeout_ms 预算。
-    std::string Hello();
+    // out_scheme 非空时，成功写入引擎当前方案（"smartabc"/"pinyin"/"wubi"）——
+    // 2026-09-13：供 TIP 启动/重连时同步语言栏显示状态，见
+    // docs/decisions/input-engine/20260913-wubi-input-scheme.md。
+    std::string Hello(std::string* out_scheme = nullptr);
 
     // M1 全量请求（每个都是"编包 -> CallWithTimeout(request_timeout_ms) -> 解包"）。
     // 失败（含超时）时 out 不变，返回 false。
@@ -80,6 +83,12 @@ public:
     // 告诉引擎——引擎据此把候选明细 + 这个矩形一起推给 myabc-ui（见 uiShow）。
     // 单向语义强，失败无需特殊处理（下次按键会再报一次新矩形）。
     bool SetCaretRect(std::uint32_t session_id, int x, int y, int w, int h);
+
+    // 2026-09-13：切换全局输入方案（"smartabc"|"pinyin"|"wubi"）——见
+    // docs/decisions/input-engine/20260913-wubi-input-scheme.md。单向语义强，跟
+    // SetCaretRect 同款惯例：成功与否都不阻塞热键处理本身，失败时语言栏状态可能
+    // 短暂跟引擎不一致，下次 Hello/成功的 setConfig 会自然纠正。
+    bool SetInputMethod(const std::string& method, ipc::Response& out);
 
 private:
     bool TryOpenPipe();

@@ -39,7 +39,13 @@ namespace myabc::ipc {
 // 提供者 -> 引擎，声明自己能处理哪些 tag，走一条独立的命名管道
 // myabc-extension-{sid}，不复用 TIP<->引擎那条）；queryCandidates（引擎 ->
 // 第三方提供者，在同一条 extension 管道上反向发起，问它要候选）。
-inline constexpr std::uint32_t kProtocolVersion = 8;
+// v9（用户 2026-09-13 要求"加入多个输入法方案的选择"，见
+// docs/decisions/input-engine/20260913-wubi-input-scheme.md）：kSetConfig 从
+// "预留占位、落到 default 分支返回 method not implemented"变成真正实现——
+// params: {input:{method: "smartabc"|"pinyin"|"wubi"}}，切换全局输入方案
+// （智能ABC / 普通拼音 / 五笔）。语义从"未实现"变成"真正处理"本身就是一次行为
+// 跳变，即使 wire 上方法名字段没变也按不变量 7 递增版本号。
+inline constexpr std::uint32_t kProtocolVersion = 9;
 
 // 长度前缀帧：uint32 小端长度 + 该长度的 UTF-8 JSON 字节。
 inline constexpr std::uint32_t kMaxFrameBytes = 1u << 20;  // 1 MiB 上限，防御坏帧

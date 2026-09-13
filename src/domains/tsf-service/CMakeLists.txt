@@ -23,9 +23,11 @@ add_library(myabc-tip SHARED
     backend/click_bridge.cpp
     backend/dll_refcount.cpp
     backend/text_convert.cpp
+    backend/scheme_lang_bar_button.cpp
     logic/key_router.cpp
     logic/mode_manager.cpp
     logic/composition_state.cpp
+    logic/scheme_hotkey_detector.cpp
     "${CMAKE_CURRENT_SOURCE_DIR}/tsf-service.def"
     "${CMAKE_CURRENT_SOURCE_DIR}/tsf-service.rc"
 )

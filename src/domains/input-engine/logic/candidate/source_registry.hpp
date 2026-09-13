@@ -18,6 +18,7 @@
 #include "bihuoma_table.hpp"
 #include "candidate_source.hpp"
 #include "extension_bridge.hpp"
+#include "wubi_table.hpp"
 
 namespace myabc::engine {
 
@@ -39,8 +40,12 @@ private:
 // extension_bridge：可空（测试/--selftest 不需要外部候选源）。放在最前面检查——
 // 只有真查到候选才会实际接管（见 ExtensionCandidateSource::Handles() DECISION），
 // 查不到会自然让路给后面的来源，不影响既有优先级。
+// wubi_table：已加载的五笔编码表，供 WubiCandidateSource 用（scheme==kWubi 时接管，
+// 见 candidate_source.hpp InputScheme 注释；跟 PinyinCandidateSource 已按 scheme 互斥，
+// 加入顺序不影响正确性，放在 Pinyin 旁边只是保持代码可读性）。
 SourceRegistry BuildDefaultSourceRegistry(LibPinyinEngine& engine, const BihuoTable& bihuo_table,
-                                          bool bihuo_enabled, char number_lead_key = 'i',
+                                          bool bihuo_enabled, const WubiTable& wubi_table,
+                                          char number_lead_key = 'i',
                                           ExtensionBridge* extension_bridge = nullptr);
 
 }  // namespace myabc::engine

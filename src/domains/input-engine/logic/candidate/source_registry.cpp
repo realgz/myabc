@@ -9,6 +9,7 @@
 #include "number_currency_source.hpp"
 #include "pinyin_candidate_source.hpp"
 #include "punctuation_source.hpp"
+#include "wubi_candidate_source.hpp"
 
 namespace myabc::engine {
 
@@ -24,7 +25,8 @@ CandidateSource* SourceRegistry::Resolve(const InputContext& ctx) const {
 }
 
 SourceRegistry BuildDefaultSourceRegistry(LibPinyinEngine& engine, const BihuoTable& bihuo_table,
-                                          bool bihuo_enabled, char number_lead_key,
+                                          bool bihuo_enabled, const WubiTable& wubi_table,
+                                          char number_lead_key,
                                           ExtensionBridge* extension_bridge) {
     SourceRegistry reg;
     reg.Add(std::make_unique<ExtensionCandidateSource>(extension_bridge));
@@ -32,6 +34,7 @@ SourceRegistry BuildDefaultSourceRegistry(LibPinyinEngine& engine, const BihuoTa
     reg.Add(std::make_unique<NumberCurrencySource>(number_lead_key));
     reg.Add(std::make_unique<PunctuationSource>());
     reg.Add(std::make_unique<PinyinCandidateSource>(engine, bihuo_table, bihuo_enabled));
+    reg.Add(std::make_unique<WubiCandidateSource>(wubi_table));
     return reg;
 }
 

@@ -15,6 +15,7 @@
 #define MYABC_ENGINE_SESSION_HPP
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -35,6 +36,9 @@ struct SessionOptions {
     char number_lead_key = 'i';
     bool bihuo_enabled = true;
     std::string bihuo_data_path;   // 空 = 不加载任何笔形数据（表为空，等价功能关闭但安全）
+    // 2026-09-13：同上模式，五笔编码表路径。空 = 不加载（表为空，kWubi 模式下任何编码
+    // 都查不到候选，退化但安全，不崩溃）。见 wubi_table.hpp。
+    std::string wubi_data_path;
     // M5（plan 06 §3.1/§3.5）：拼音来源整句提交后是否调用 engine_.RememberUserInput +
     // Train（用户自学习）。只影响 UsesEngineChoose()==true 的来源（拼音）；number_currency
     // 这类原子候选来源永远不训练，见 session.cpp DECISION。
@@ -43,6 +47,9 @@ struct SessionOptions {
     // 同样的路数，见 dispatcher.cpp）：每 N 次成功 commit 主动落盘一次学习结果。
     // 0 = 关闭自动保存（只在 idle-exit/shutdown 时存）。
     unsigned autosave_every_n_commits = 20;
+    // 2026-09-13：当前输入方案，见 docs/decisions/input-engine/20260913-wubi-input-scheme.md。
+    // 默认 kSmartAbc 保证不显式配置时行为跟改动前完全一致。
+    InputScheme scheme = InputScheme::kSmartAbc;
 };
 
 struct CandidateView {
@@ -91,11 +98,32 @@ public:
     // 见 session.cpp DECISION。
     void SetFieldHint(std::string hint);
 
+    // 2026-09-13：切换当前方案。返回值：切换前是否正处于组字态（Dispatcher 用来决定
+    // 要不要主动 PushHide）。相同方案重复设置是空操作，返回 false。切换会强制取消
+    // 正在进行的组字（丢弃半成品，不训练、不上屏，同 CancelComposition 语义）。
+    bool SetScheme(InputScheme scheme);
+    InputScheme scheme() const noexcept { return opts_.scheme; }
+
 private:
     SessionResult Recompute();     // 用 raw_ 通过 registry_ 重新产出候选，page_index 归零
     SessionResult BuildViewResult(bool handled, bool has_commit = false,
                                  std::string commit = {});
     void ResetToIdle();
+
+    // 2026-09-13（docs/decisions/input-engine/20260913-wubi-input-scheme.md）：
+    // 组字态下"数字键怎么解释"按 scheme 拆成两个函数，两套语义物理分离、互不干扰，
+    // 只有一个分派点（ProcessKey 里）。
+    //
+    // kSmartAbc 专属：原样迁移自 M4/2026-09-11 的既有逻辑（数字模式续写 / 笔形辅助码
+    // 续写 / space_armed_ 之后的 select_keys），一字不改。返回 std::nullopt 表示这个
+    // 按键不该被这三段逻辑拦截，调用方应继续往下走翻页/字母追加分支（对应原代码里
+    // "这几个 if 都不成立就自然往下掉"的既有控制流，用 optional 显式表达"未处理"）。
+    std::optional<SessionResult> RouteDigitKeyPinyin(unsigned ch);
+
+    // kPlainPinyin/kWubi 共用：数字键任何时候都直接 select_keys 选字，不检查
+    // space_armed_——两个 scheme 的数字键从第一天起就只有"选第几个候选"这一个含义，
+    // 不像智能ABC 那样需要跟笔形码/数字续写复用同一批按键。
+    SessionResult RouteDigitKeyDirect(char c);
     // M5：拼音来源整句提交前调用（必须在 ResetToIdle()/engine_.Reset() 之前——
     // RememberUserInput/Train 读取的是当前 matrix/nbest 状态）。非拼音来源、
     // learning_enabled=false 时是空操作。

@@ -18,7 +18,7 @@
 ; 一起手动改——Inno Setup 脚本没法直接读 CMake 变量，那边是四个可执行文件
 ; VERSIONINFO 资源的版本号来源（见 src/config/version.h.in），这里是装包本身的
 ; 版本号，两处目前独立维护，改一处别忘了改另一处。
-#define MyAppVersion "0.1.9"
+#define MyAppVersion "0.2.0"
 #define MyAppPublisher "myabc project"
 #define MyAppURL "https://github.com/realgz/myabc"
 #define SrcDir "..\out\Release\install-x64"

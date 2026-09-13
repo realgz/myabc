@@ -22,4 +22,13 @@ Session& SessionManager::GetOrCreate(std::uint32_t session_id) {
 
 void SessionManager::Remove(std::uint32_t session_id) { sessions_.erase(session_id); }
 
+std::vector<std::uint32_t> SessionManager::SetSchemeForAll(InputScheme scheme) {
+    opts_.scheme = scheme;
+    std::vector<std::uint32_t> affected;
+    for (auto& [id, session] : sessions_) {
+        if (session->SetScheme(scheme)) affected.push_back(id);
+    }
+    return affected;
+}
+
 }  // namespace myabc::engine

@@ -29,8 +29,10 @@
 #include "learning_policy.hpp"
 #include "libpinyin_wrapper.hpp"
 #include "protocol.hpp"
+#include "scheme_state_store.hpp"
 #include "session/session_manager.hpp"
 #include "ui_bridge.hpp"
+#include "wubi_table.hpp"
 
 namespace myabc::engine {
 
@@ -41,8 +43,11 @@ public:
     // handled:false，不崩溃，等价 M0 占位行为。
     // ui_bridge 可空（测试/--selftest 不需要候选窗）。extension_bridge 同样可空
     // （测试/--selftest 不需要外部候选源，见 extension_bridge.hpp）。
+    // scheme_state_path：setConfig 切换输入方案成功后落盘的小状态文件路径（见
+    // scheme_state_store.hpp）。空 = 不持久化（测试/--selftest 默认，同其它可选路径
+    // 参数的既有惯例）。
     Dispatcher(LibPinyinEngine& engine, SessionOptions opts, UiBridge* ui_bridge = nullptr,
-              ExtensionBridge* extension_bridge = nullptr);
+              ExtensionBridge* extension_bridge = nullptr, std::string scheme_state_path = {});
 
     ipc::Response Handle(const ipc::Request& req);
 
@@ -64,6 +69,7 @@ private:
     ipc::Response HandleFocusOut(const ipc::Request& req);
     ipc::Response HandleSetCaretRect(const ipc::Request& req);
     ipc::Response HandleSetFieldHint(const ipc::Request& req);
+    ipc::Response HandleSetConfig(const ipc::Request& req);
     ipc::Response HandleUserDictExport(const ipc::Request& req);
     ipc::Response HandleUserDictImport(const ipc::Request& req);
     ipc::Response HandleUserDictClear(const ipc::Request& req);
@@ -75,6 +81,7 @@ private:
 
     LibPinyinEngine& engine_;
     BihuoTable bihuo_table_;   // registry_ 持有它的引用；先于 registry_ 内容确定而声明
+    WubiTable wubi_table_;    // 同上，五笔编码表，见 wubi_table.hpp
     SourceRegistry registry_;  // 默认空构造，真正内容在构造函数体里赋值（见 .cpp 说明）
     SessionManager sessions_;
     UiBridge* ui_bridge_;
@@ -86,6 +93,9 @@ private:
 
     // sessionId -> 最近一次算好、composing=true 的结果，等 setCaretRect 来了再推 UI。
     std::unordered_map<std::uint32_t, SessionResult> pending_ui_;
+
+    // 2026-09-13：见构造函数参数注释与 scheme_state_store.hpp。
+    std::string scheme_state_path_;
 };
 
 }  // namespace myabc::engine

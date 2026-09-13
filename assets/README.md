@@ -23,3 +23,9 @@
   规则（取前两笔、归并成五笔形分类）转换生成，覆盖约 6939 个字。转换脚本与推导
   过程记录见 `docs/decisions/_debt-log.md` 2026-09-12。最初（M4）只有 8 个字的
   种子表，2026-09-12 换成这份全量表。
+- `wubi86.txt`：五笔字型（86 版）编码表（code -> text -> weight）。原始数据取自
+  [rime-wubi](https://github.com/rime/rime-wubi) 的 `wubi86.dict.yaml`
+  （LGPL-3.0 License，与 myabc 的 GPL-3.0-or-later 兼容），按基本 CJK
+  统一表意文字区（U+4E00-U+9FFF）过滤、丢弃拆分提示字段后转换生成，共 86788
+  条。转换脚本与统计记录见文件头部注释及 `docs/decisions/_debt-log.md`
+  2026-09-13。原始 LICENSE 全文见同目录 `wubi86-LICENSE`。

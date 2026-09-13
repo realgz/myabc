@@ -28,6 +28,8 @@
 #include "ipc_client.hpp"
 #include "key_router.hpp"
 #include "mode_manager.hpp"
+#include "scheme_hotkey_detector.hpp"
+#include "scheme_lang_bar_button.hpp"
 
 namespace myabc::tsf {
 
@@ -86,6 +88,15 @@ private:
     void SetCachedContext(ITfContext* context);
     void OnCandidateClicked(int index);
 
+    // 2026-09-13（docs/decisions/input-engine/20260913-wubi-input-scheme.md）：
+    // 热键（Ctrl+Shift+W 默认）与语言栏按钮点击共用同一个切换动作——本地循环到
+    // 下一个方案（smartabc->pinyin->wubi->smartabc），乐观更新语言栏文字，再单向
+    // 通知引擎（同 SetCaretRect 既有惯例：失败不阻塞，不特殊处理，下次 Hello 会
+    // 用引擎侧的权威状态纠正本地缓存）。
+    void TriggerSchemeSwitch();
+    HRESULT InitLangBar();
+    void UninitLangBar();
+
     LONG ref_ = 1;
     ITfThreadMgr* thread_mgr_ = nullptr;
     TfClientId tid_ = TF_CLIENTID_NULL;
@@ -101,6 +112,14 @@ private:
     CompositionController composition_;
     ClickBridge click_bridge_;
     ITfContext* cached_context_ = nullptr;   // 手动 AddRef/Release，见 SetCachedContext
+
+    // 2026-09-13：输入方案切换（见 docs/decisions/input-engine/20260913-wubi-input-scheme.md）。
+    SchemeHotkeyDetector scheme_hotkey_;
+    ITfLangBarItemMgr* lang_bar_mgr_ = nullptr;         // 手动 AddRef/Release
+    SchemeLangBarButton* scheme_lang_bar_button_ = nullptr;   // 手动 AddRef/Release
+    // 本地缓存的当前方案（"smartabc"/"pinyin"/"wubi"）——权威状态始终在引擎侧，
+    // 这里只是为了计算"下一个方案"+驱动语言栏文字，Hello() 响应会纠正它。
+    std::string current_scheme_method_ = "smartabc";
 };
 
 }  // namespace myabc::tsf

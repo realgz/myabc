@@ -25,6 +25,10 @@ bool LooksLikeNumberBody(const std::string& body) {
 }  // namespace
 
 bool NumberCurrencySource::Handles(const InputContext& ctx) const {
+    // DECISION: docs/decisions/input-engine/20260913-wubi-input-scheme.md
+    // i 数字金额模式是智能ABC专属约定；kWubi 下 'i' 是合法字根键（"工期"=aaad 一类
+    // 编码同样以 i 开头），必须显式排除，不能靠"数字键路由改变后不会触发"的隐式假设。
+    if (ctx.scheme != InputScheme::kSmartAbc) return false;
     if (ctx.mode != InputMode::kChinese || ctx.raw.size() < 2) return false;
     if (ctx.raw[0] != lead_key_) return false;
     return LooksLikeNumberBody(ctx.raw.substr(1));

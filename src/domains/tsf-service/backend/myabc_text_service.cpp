@@ -88,9 +88,28 @@ wchar_t VkToCharCtrlAware(WPARAM vk, LPARAM lParam, bool ctrl) {
     return VkToChar(vk, lParam);
 }
 
+bool IsShiftDown() { return (::GetKeyState(VK_SHIFT) & 0x8000) != 0; }
+
+// 2026-09-13（docs/decisions/input-engine/20260913-wubi-input-scheme.md）：三态循环，
+// 未知值（如引擎侧返回了本地还不认识的值）兜底回到默认 smartabc，不卡死循环。
+std::string NextSchemeMethod(const std::string& current) {
+    if (current == "smartabc") return "pinyin";
+    if (current == "pinyin") return "wubi";
+    return "smartabc";
+}
+
+const wchar_t* SchemeMethodDisplayText(const std::string& method) {
+    if (method == "pinyin") return L"普通拼音";
+    if (method == "wubi") return L"五笔";
+    return L"智能ABC";
+}
+
 }  // namespace
 
-CMyabcTextService::CMyabcTextService() : key_router_(config_.candidates) { DllAddRef(); }
+CMyabcTextService::CMyabcTextService()
+    : key_router_(config_.candidates), scheme_hotkey_(ParseHotkeyLetterVk(config_.input.method_switch_hotkey, 'W')) {
+    DllAddRef();
+}
 
 CMyabcTextService::~CMyabcTextService() {
     SetCachedContext(nullptr);   // 防御性收尾：正常路径下 Deactivate() 应该已经清过
@@ -136,6 +155,11 @@ STDMETHODIMP CMyabcTextService::ActivateEx(ITfThreadMgr* ptim, TfClientId tid, D
     tid_ = tid;
 
     config_ = myabc::config::Load(CurrentUserSid(), AppDataDir());
+    // 构造函数时 config_ 还是编译期默认值（TOML 尚未真正解析，见 config_loader.cpp
+    // DECISION），这里用真正加载完的配置重新设置一次，为未来 TOML 落地后热键可
+    // 配置留好通路（今天这一步是空操作，两次解析结果相同）。
+    scheme_hotkey_.SetLetterVk(ParseHotkeyLetterVk(config_.input.method_switch_hotkey, 'W'));
+    key_router_.SetSchemeHotkeyVk(scheme_hotkey_.letter_vk());
 
     const HRESULT hr = InitSinks();
     if (FAILED(hr)) {
@@ -143,11 +167,13 @@ STDMETHODIMP CMyabcTextService::ActivateEx(ITfThreadMgr* ptim, TfClientId tid, D
         return hr;
     }
 
+    InitLangBar();   // 失败不阻断激活——语言栏状态指示是体验增强，不是核心功能
     ConnectEngineAndHello();
     return S_OK;
 }
 
 STDMETHODIMP CMyabcTextService::Deactivate() {
+    UninitLangBar();
     UninitSinks();
     click_bridge_.Destroy();
     SetCachedContext(nullptr);
@@ -196,6 +222,55 @@ void CMyabcTextService::UninitSinks() {
     }
 }
 
+HRESULT CMyabcTextService::InitLangBar() {
+    if (thread_mgr_ == nullptr) return E_UNEXPECTED;
+
+    wil::com_ptr_nothrow<ITfLangBarItemMgr> mgr;
+    HRESULT hr = thread_mgr_->QueryInterface(IID_PPV_ARGS(&mgr));
+    if (FAILED(hr)) return hr;   // 某些宿主/沙箱环境可能不支持语言栏，不阻断激活
+
+    scheme_lang_bar_button_ =
+        new (std::nothrow) SchemeLangBarButton([this] { TriggerSchemeSwitch(); });
+    if (scheme_lang_bar_button_ == nullptr) return E_OUTOFMEMORY;
+
+    hr = mgr->AddItem(scheme_lang_bar_button_);
+    if (FAILED(hr)) {
+        scheme_lang_bar_button_->Release();
+        scheme_lang_bar_button_ = nullptr;
+        return hr;
+    }
+
+    lang_bar_mgr_ = mgr.detach();   // AddItem 内部已 AddRef 按钮，这里的 lang_bar_mgr_
+                                    // 引用留给 RemoveItem 用，不需要额外 AddRef 按钮。
+    return S_OK;
+}
+
+void CMyabcTextService::UninitLangBar() {
+    if (lang_bar_mgr_ != nullptr && scheme_lang_bar_button_ != nullptr) {
+        lang_bar_mgr_->RemoveItem(scheme_lang_bar_button_);
+    }
+    if (scheme_lang_bar_button_ != nullptr) {
+        scheme_lang_bar_button_->Release();
+        scheme_lang_bar_button_ = nullptr;
+    }
+    if (lang_bar_mgr_ != nullptr) {
+        lang_bar_mgr_->Release();
+        lang_bar_mgr_ = nullptr;
+    }
+}
+
+void CMyabcTextService::TriggerSchemeSwitch() {
+    const std::string next = NextSchemeMethod(current_scheme_method_);
+    current_scheme_method_ = next;   // 乐观本地更新，见类头 DECISION
+    if (scheme_lang_bar_button_ != nullptr) {
+        scheme_lang_bar_button_->SetDisplayText(SchemeMethodDisplayText(next));
+    }
+    if (ipc_ != nullptr && (ipc_->connected() || ipc_->EnsureConnectedAsync())) {
+        ipc::Response resp;
+        ipc_->SetInputMethod(next, resp);   // 单向语义强，失败不特殊处理（同 SetCaretRect 惯例）
+    }
+}
+
 void CMyabcTextService::ConnectEngineAndHello() {
     IpcClientConfig ic;
     ic.pipe_name = Widen(config_.ipc.pipe_name_template);
@@ -212,8 +287,17 @@ void CMyabcTextService::ConnectEngineAndHello() {
     // 强求立刻做——OnKeyDown 每次按键都会自己 EnsureConnectedAsync()，一旦后台线程
     // 连上了自然接上，不需要在这里等。
     if (ipc_->EnsureConnectedAsync()) {
-        const std::string ver = ipc_->Hello();
-        ::OutputDebugStringA(("[myabc] engine hello -> \"" + ver + "\"\n").c_str());
+        std::string scheme;
+        const std::string ver = ipc_->Hello(&scheme);
+        ::OutputDebugStringA(("[myabc] engine hello -> \"" + ver + "\", scheme=\"" + scheme + "\"\n").c_str());
+        if (!scheme.empty()) {
+            // 同步引擎侧的权威方案状态（可能来自跨进程持久化，见 scheme_state_store.hpp），
+            // 覆盖 TIP 本地的乐观默认值，语言栏文字跟着刷新。
+            current_scheme_method_ = scheme;
+            if (scheme_lang_bar_button_ != nullptr) {
+                scheme_lang_bar_button_->SetDisplayText(SchemeMethodDisplayText(scheme));
+            }
+        }
         ipc_->InitSession(kSessionId);
     } else {
         ::OutputDebugStringA("[myabc] engine hello: connecting in background（按需重连）\n");
@@ -239,9 +323,10 @@ STDMETHODIMP CMyabcTextService::OnTestKeyDown(ITfContext* /*pic*/, WPARAM wParam
                                              BOOL* pfEaten) {
     // 不变量 3：必须本地同步答复，不问引擎。
     const bool ctrl = IsCtrlDown();
+    const bool shift = IsShiftDown();
     const wchar_t ch = VkToCharCtrlAware(wParam, lParam, ctrl);
     *pfEaten = key_router_.IsInterestedKey(static_cast<int>(wParam), ch, composition_.active(),
-                                          mode_manager_.mode())
+                                          mode_manager_.mode(), ctrl, shift)
                   ? TRUE
                   : FALSE;
     return S_OK;
@@ -253,10 +338,21 @@ STDMETHODIMP CMyabcTextService::OnKeyDown(ITfContext* pic, WPARAM wParam, LPARAM
 
     const int vk = static_cast<int>(wParam);
     const bool ctrl = IsCtrlDown();
+    const bool shift = IsShiftDown();
     const wchar_t ch = VkToCharCtrlAware(wParam, lParam, ctrl);
     const bool composing = composition_.active();
 
-    if (!key_router_.IsInterestedKey(vk, ch, composing, mode_manager_.mode())) {
+    // 2026-09-13：方案切换热键（默认 Ctrl+Shift+W）优先于一切组字/翻译逻辑——
+    // 见 docs/decisions/input-engine/20260913-wubi-input-scheme.md。命中时切换
+    // 正在进行的组字会被丢弃（跟真实输入法切换方案时的标准行为一致）。
+    if (scheme_hotkey_.OnKeyDown(vk, ctrl, shift)) {
+        *pfEaten = TRUE;
+        if (composing) HideAndResetComposition(pic);
+        TriggerSchemeSwitch();
+        return S_OK;
+    }
+
+    if (!key_router_.IsInterestedKey(vk, ch, composing, mode_manager_.mode(), ctrl, shift)) {
         *pfEaten = FALSE;
         return S_OK;
     }
@@ -310,9 +406,11 @@ STDMETHODIMP CMyabcTextService::OnTestKeyUp(ITfContext* /*pic*/, WPARAM wParam, 
                                            BOOL* pfEaten) {
     // 跟 OnTestKeyDown 用同一份判定（M1 R2 debt-log 记的既有惯例），包括 Ctrl+数字
     // 的字符合成，否则 KeyUp 可能因为判定不一致而给出跟 KeyDown 矛盾的 *pfEaten。
-    const wchar_t ch = VkToCharCtrlAware(wParam, lParam, IsCtrlDown());
+    const bool ctrl = IsCtrlDown();
+    const bool shift = IsShiftDown();
+    const wchar_t ch = VkToCharCtrlAware(wParam, lParam, ctrl);
     *pfEaten = key_router_.IsInterestedKey(static_cast<int>(wParam), ch, composition_.active(),
-                                          mode_manager_.mode())
+                                          mode_manager_.mode(), ctrl, shift)
                   ? TRUE
                   : FALSE;
     return S_OK;
@@ -320,6 +418,7 @@ STDMETHODIMP CMyabcTextService::OnTestKeyUp(ITfContext* /*pic*/, WPARAM wParam, 
 
 STDMETHODIMP CMyabcTextService::OnKeyUp(ITfContext* pic, WPARAM wParam, LPARAM /*lParam*/,
                                        BOOL* pfEaten) {
+    scheme_hotkey_.OnKeyUp(static_cast<int>(wParam));   // 清去抖状态，见类头 DECISION
     const bool toggled = mode_manager_.OnKeyUp(static_cast<int>(wParam));
     if (toggled && composition_.active()) HideAndResetComposition(pic);
     *pfEaten = FALSE;   // Shift/普通键弹起本身不产生字符

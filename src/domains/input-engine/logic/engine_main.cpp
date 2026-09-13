@@ -26,6 +26,7 @@
 #include "extension_bridge.hpp"
 #include "libpinyin_wrapper.hpp"
 #include "pipe_server.hpp"
+#include "scheme_state_store.hpp"
 #include "session/session.hpp"
 #include "single_instance.hpp"
 #include "ui_bridge.hpp"
@@ -103,8 +104,17 @@ myabc::engine::SessionOptions ToSessionOptions(const myabc::config::Config& cfg)
     // 相对安装目录（assets/data/bihuoma.txt 随包分发）；文件不存在时 BihuoTable 静默
     // 留空，过滤退化成空操作，不影响其它候选（见 backend/bihuoma_table.hpp DECISION）。
     opts.bihuo_data_path = SelfDir() + "\\data\\bihuoma.txt";
+    // 同上模式（见 backend/wubi_table.hpp DECISION）。
+    opts.wubi_data_path = SelfDir() + "\\data\\wubi86.txt";
     opts.learning_enabled = cfg.learning.enabled;
     opts.autosave_every_n_commits = cfg.learning.autosave_every_n_commits;
+
+    // 2026-09-13（docs/decisions/input-engine/20260913-wubi-input-scheme.md）：
+    // cfg.input.method 三选一映射到 InputScheme；未知值兜底 kSmartAbc（同 protocol
+    // 层 HandleSetConfig 拒绝未知值不同——这里是启动期读配置，容错优先于报错，跟
+    // 项目里"配置缺失/不认识就退回安全默认值"的既有惯例一致）。
+    opts.scheme = myabc::engine::MethodStringToInputScheme(cfg.input.method)
+                      .value_or(myabc::engine::InputScheme::kSmartAbc);
     return opts;
 }
 
@@ -112,7 +122,21 @@ myabc::engine::SessionOptions ToSessionOptions(const myabc::config::Config& cfg)
 
 int main(int argc, char** argv) {
     const std::string sid = ArgValue(argc, argv, "--sid", CurrentUserSid());
-    const myabc::config::Config cfg = myabc::config::Load(sid, AppDataDir());
+    myabc::config::Config cfg = myabc::config::Load(sid, AppDataDir());
+
+    // 2026-09-13：方案选择持久化（用户拍板要求，见 scheme_state_store.hpp DECISION）。
+    // 启动时读一次状态文件覆盖 cfg.input.method；文件不存在（首次运行/从未切换过）
+    // 时 LoadSchemeState 返回 nullopt，cfg 保留编译期默认值 "smartabc"，行为不变。
+    // 目录显式创建（不依赖 engine.Init() 创建 user_data_dir 的副作用——真实默认配置
+    // 下 user_data_dir 恰好也在 %APPDATA%\myabc 下所以副作用凑巧生效，但 --user-dir
+    // 被覆盖成其它路径时（测试、未来的多用户场景）不应该依赖这个隐式关系，同
+    // crash_guard.cpp InstallCrashGuard 的"已存在则忽略失败"既有写法）。
+    const std::string myabc_appdata_dir = AppDataDir() + "\\myabc";
+    ::CreateDirectoryA(myabc_appdata_dir.c_str(), nullptr);
+    const std::string scheme_state_path = myabc_appdata_dir + "\\scheme-state.txt";
+    if (const auto saved = myabc::engine::LoadSchemeState(scheme_state_path)) {
+        cfg.input.method = *saved;
+    }
 
     if (HasFlag(argc, argv, "--selftest")) {
         const std::string model_dir = ArgValue(argc, argv, "--model-dir", cfg.engine.model_dir);
@@ -178,7 +202,8 @@ int main(int argc, char** argv) {
         session_opts.autosave_every_n_commits =
             static_cast<unsigned>(std::strtoul(autosave_arg.c_str(), nullptr, 10));
     }
-    myabc::engine::Dispatcher dispatcher(engine, session_opts, &ui_bridge, &extension_bridge);
+    myabc::engine::Dispatcher dispatcher(engine, session_opts, &ui_bridge, &extension_bridge,
+                                         scheme_state_path);
     myabc::engine::PipeServerOptions server_opts;
     server_opts.pipe_name = pipe_name;
     server_opts.idle_exit_minutes = cfg.engine.idle_exit_minutes;

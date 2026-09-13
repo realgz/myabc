@@ -79,6 +79,10 @@ $dataOut = Join-Path $engineOut 'data'
 New-Item -ItemType Directory -Force -Path $dataOut | Out-Null
 Copy-IfExists (Join-Path $MyabcRepoRoot 'assets\data\bihuoma.txt') $dataOut
 
+# 五笔字型编码表（输入方案切换功能，见 docs/plan/08-wubi-input-scheme-plan.md）：
+# engine_main.cpp 里 wubi_data_path = SelfDir() + "\data\wubi86.txt"，与词库数据同目录。
+Copy-IfExists (Join-Path $MyabcRepoRoot 'assets\data\wubi86.txt') $dataOut
+
 # 用 ldd 收集 libpinyin.dll 依赖的 /ucrt64/bin DLL（排除系统 DLL）。
 if (Test-Path (Join-Path $lpBin 'libpinyin.dll')) {
     $env:MSYSTEM = 'UCRT64'

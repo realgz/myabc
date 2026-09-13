@@ -11,6 +11,7 @@
 | [05-m4-bihuo-numbers-gbk-plan.md](./05-m4-bihuo-numbers-gbk-plan.md) | M4：笔形辅助码 + i 中文数字/金额 + GBK 生僻字 | 生效 | 2026-09-09 |
 | [06-m5-user-dict-learning-plan.md](./06-m5-user-dict-learning-plan.md) | M5：用户词库自学习 | 生效 | 2026-09-09 |
 | [07-m6-compat-hardening-plan.md](./07-m6-compat-hardening-plan.md) | M6：浏览器/UWP/Office 兼容 + 32/64 位 | 生效 | 2026-09-09 |
+| [08-wubi-input-scheme-plan.md](./08-wubi-input-scheme-plan.md) | 输入方案选择：智能ABC/普通拼音/五笔字型（86 版）三态切换 + 五笔从零实现（§10 为最终权威版本） | 生效 | 2026-09-13 |
 
 ## 已归档
 见 [_archive/](./_archive/)

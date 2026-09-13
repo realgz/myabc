@@ -54,14 +54,21 @@ SessionResult Session::ProcessKey(int vk, unsigned ch, bool ctrl) {
             return Recompute();
         }
         if (vk == VK_ESCAPE) return CancelComposition();
-        // DECISION（智能ABC 风格空格两段式确认，用户 2026-09-11 明确要求，见
-        // docs/decisions/_debt-log.md）：候选只有 0/1 个时没有歧义，空格直接选中上屏
-        // （原有行为）。候选 >=2 个时空格不再直接吞下候选[0]——第一次空格只是把
-        // 候选[0]"架"上（UI 高亮，不上屏，组字继续），逼用户看一眼是不是真的要这个；
-        // 第二次空格（或直接按数字键，数字键不受这套两段式影响）才真正选中上屏。
-        // raw_ 只要一变化（追加字母/退格/翻页/换段）就通过 Recompute()/相关分支清掉
-        // space_armed_，防止"架住的是上一份候选"这种错位。
         if (vk == VK_SPACE) {
+            // 2026-09-13（docs/decisions/input-engine/20260913-wubi-input-scheme.md）：
+            // 两段式确认是"智能ABC"专属——它需要数字键身兼"笔形码/数字续写"和"选字"
+            // 两种含义，才需要"架住"这个中间态来消歧。普通拼音/五笔的数字键从不承担
+            // 续写含义，空格没有需要消歧的理由，任何候选数下都直接选中候选[0]。
+            if (opts_.scheme != InputScheme::kSmartAbc) return SelectCandidate(0);
+
+            // DECISION（智能ABC 风格空格两段式确认，用户 2026-09-11 明确要求，见
+            // docs/decisions/_debt-log.md）：候选只有 0/1 个时没有歧义，空格直接选中
+            // 上屏（原有行为）。候选 >=2 个时空格不再直接吞下候选[0]——第一次空格
+            // 只是把候选[0]"架"上（UI 高亮，不上屏，组字继续），逼用户看一眼是不是
+            // 真的要这个；第二次空格（或直接按数字键，数字键不受这套两段式影响）
+            // 才真正选中上屏。raw_ 只要一变化（追加字母/退格/翻页/换段）就通过
+            // Recompute()/相关分支清掉 space_armed_，防止"架住的是上一份候选"这种
+            // 错位。
             if (candidates_.size() <= 1) return SelectCandidate(0);
             if (!space_armed_) {
                 space_armed_ = true;
@@ -71,44 +78,23 @@ SessionResult Session::ProcessKey(int vk, unsigned ch, bool ctrl) {
             return SelectCandidate(0);
         }
 
-        // DECISION（用户 2026-09-11 进一步明确的完整规格，取代 M4 时"独立触发键"的
-        // 旧决策——见 docs/decisions/_debt-log.md 2026-09-11「笔形辅助码触发键」条目
-        // 的废弃说明）：数字键在按过一次空格（space_armed_）之前统一表示"继续拼数字/
-        // 笔形码"，按过一次空格之后（进入"数字选择状态"）才表示 select_keys 那种
-        // "选第几个候选"。这样"拼音/数字直接接数字"（"i2025"、"wo31"）和"数字选字"
-        // 就不再冲突，不需要额外的触发键——拼音后数字要么被下面的模式判断吃掉当输入
-        // 本身的一部分，要么（没有匹配的模式时）落到 select_keys 分支，但 select_keys
-        // 分支现在只在 space_armed_ 时生效。
-        const bool in_number_mode = !raw_.empty() && raw_.front() == opts_.number_lead_key;
-        if (!space_armed_ && in_number_mode && ch != 0) {
+        // 2026-09-13：数字键怎么解释按 scheme 分派到两个函数（RouteDigitKeyPinyin 原样
+        // 保留 kSmartAbc 既有逻辑；kPlainPinyin/kWubi 共用 RouteDigitKeyDirect），只有
+        // 一个分派点，两套语义物理分离，见 session.hpp 方法声明处的 DECISION 注释。
+        if (opts_.scheme == InputScheme::kSmartAbc) {
+            if (auto r = RouteDigitKeyPinyin(ch)) return *r;
+        } else if (ch != 0) {
             const char c = static_cast<char>(ch);
-            if ((c >= '0' && c <= '9') || c == '.' || c == '-') {
-                raw_ += c;
-                return Recompute();
-            }
-        }
-
-        // 笔形辅助码：数字 1-5 直接追加为笔形码后缀（"wo" -> "wo3" -> "wo31"），不需要
-        // 触发键，只要还没进入数字选择状态、也不是数字模式（两者用同一批字符但语义
-        // 互斥，由 raw_ 首字符已经区分）。
-        if (!space_armed_ && !in_number_mode && opts_.bihuo_enabled && ch != 0) {
-            const char c = static_cast<char>(ch);
-            if (c >= '1' && c <= '5') {
-                raw_ += c;
-                return Recompute();
-            }
-        }
-
-        // 数字选择状态（已按过一次空格）：数字键才表示"选第几个候选"。
-        if (space_armed_ && ch != 0) {
-            const char c = static_cast<char>(ch);
-            if (opts_.select_keys.find(c) != std::string::npos) {
-                return SelectCandidate(static_cast<int>(opts_.select_keys.find(c)));
-            }
+            if (c >= '0' && c <= '9') return RouteDigitKeyDirect(c);
         }
 
         if (ch != 0) {
             const char c = static_cast<char>(ch);
+            // 五笔编码最长 4 键（86 版规则）；第 5 个及之后的字母键吃掉但不追加，
+            // 维持当前组字状态不变，而不是让 raw_ 变成永远查不到编码的死态。
+            if (opts_.scheme == InputScheme::kWubi && raw_.size() >= 4 && IsAsciiLetter(ch)) {
+                return BuildViewResult(true);
+            }
             if (opts_.page_prev_keys.find(c) != std::string::npos) return PageCandidates(-1);
             if (opts_.page_next_keys.find(c) != std::string::npos) return PageCandidates(+1);
             if (IsAsciiLetter(ch)) {
@@ -222,10 +208,77 @@ void Session::FocusOut() { ResetToIdle(); }
 
 void Session::SetFieldHint(std::string hint) { field_hint_ = std::move(hint); }
 
+bool Session::SetScheme(InputScheme scheme) {
+    if (opts_.scheme == scheme) return false;
+    const bool was_composing = composing_;
+    // 丢弃半成品，不训练、不上屏——同 CancelComposition() 语义（docs/plan/
+    // 08-wubi-input-scheme-plan.md §4.4：切换方案时正在组字中的文本框被强制取消
+    // 组字，这是所有主流输入法切换方案时的标准行为）。
+    if (composing_) ResetToIdle();
+    opts_.scheme = scheme;
+    return was_composing;
+}
+
+std::optional<SessionResult> Session::RouteDigitKeyPinyin(unsigned ch) {
+    // 原样迁移自 M4/2026-09-11 的既有逻辑（数字模式续写 / 笔形辅助码续写 /
+    // space_armed_ 之后的 select_keys），一字不改——见
+    // docs/decisions/input-engine/20260911-space-key-two-step-confirm.md。
+    // 返回 std::nullopt 表示这三段都不该拦截这个键，调用方应继续走翻页/字母追加
+    // 分支（对应改造前"这几个 if 都不成立就自然往下掉"的既有控制流）。
+    //
+    // DECISION（用户 2026-09-11 进一步明确的完整规格，取代 M4 时"独立触发键"的
+    // 旧决策——见 docs/decisions/_debt-log.md 2026-09-11「笔形辅助码触发键」条目
+    // 的废弃说明）：数字键在按过一次空格（space_armed_）之前统一表示"继续拼数字/
+    // 笔形码"，按过一次空格之后（进入"数字选择状态"）才表示 select_keys 那种
+    // "选第几个候选"。这样"拼音/数字直接接数字"（"i2025"、"wo31"）和"数字选字"
+    // 就不再冲突，不需要额外的触发键——拼音后数字要么被下面的模式判断吃掉当输入
+    // 本身的一部分，要么（没有匹配的模式时）落到 select_keys 分支，但 select_keys
+    // 分支现在只在 space_armed_ 时生效。
+    const bool in_number_mode = !raw_.empty() && raw_.front() == opts_.number_lead_key;
+    if (!space_armed_ && in_number_mode && ch != 0) {
+        const char c = static_cast<char>(ch);
+        if ((c >= '0' && c <= '9') || c == '.' || c == '-') {
+            raw_ += c;
+            return Recompute();
+        }
+    }
+
+    // 笔形辅助码：数字 1-5 直接追加为笔形码后缀（"wo" -> "wo3" -> "wo31"），不需要
+    // 触发键，只要还没进入数字选择状态、也不是数字模式（两者用同一批字符但语义
+    // 互斥，由 raw_ 首字符已经区分）。
+    if (!space_armed_ && !in_number_mode && opts_.bihuo_enabled && ch != 0) {
+        const char c = static_cast<char>(ch);
+        if (c >= '1' && c <= '5') {
+            raw_ += c;
+            return Recompute();
+        }
+    }
+
+    // 数字选择状态（已按过一次空格）：数字键才表示"选第几个候选"。
+    if (space_armed_ && ch != 0) {
+        const char c = static_cast<char>(ch);
+        if (opts_.select_keys.find(c) != std::string::npos) {
+            return SelectCandidate(static_cast<int>(opts_.select_keys.find(c)));
+        }
+    }
+
+    return std::nullopt;
+}
+
+SessionResult Session::RouteDigitKeyDirect(char c) {
+    // kPlainPinyin/kWubi 共用：数字键任何时候都直接选字，不检查 space_armed_——
+    // 见 docs/decisions/input-engine/20260913-wubi-input-scheme.md。真实五笔/普通
+    // 拼音的数字键从第一天起就只有一个含义："选第几个候选"，不存在智能ABC 场景里
+    // 数字键要跟笔形码/数字模式复用同一批按键、才不得不引入"架住"消歧的复用冲突。
+    const auto pos = opts_.select_keys.find(c);
+    if (pos != std::string::npos) return SelectCandidate(static_cast<int>(pos));
+    return BuildViewResult(false);   // 未映射的数字键：不吃，交还宿主
+}
+
 SessionResult Session::Recompute() {
     last_partial_sentence_.clear();
     space_armed_ = false;   // raw_ 变了，之前架着的候选（如果有）已经过期
-    const InputContext ctx{InputMode::kChinese, raw_, composing_, field_hint_};
+    const InputContext ctx{InputMode::kChinese, raw_, composing_, field_hint_, opts_.scheme};
     CandidateSource* src = registry_.Resolve(ctx);
     if (src == nullptr) {
         ResetToIdle();
@@ -247,7 +300,20 @@ SessionResult Session::Recompute() {
     // "只剩一个候选才自动选中"跟 VK_SPACE 分支"候选<=1 直接选中"是同一条规则，只是
     // 这里在候选一出现就立刻应用，不用等按键。SelectCandidate(0) 走一致的
     // engine-choose/原子候选分流逻辑，不重复实现。
-    if (candidates_.size() == 1) return SelectCandidate(0);
+    //
+    // DECISION（2026-09-13，五笔真机/e2e 测试中发现的真 bug，见
+    // docs/decisions/input-engine/20260913-wubi-input-scheme.md 补充）：这条规则
+    // 对 kWubi **不适用**，必须显式排除。五笔是精确码查表（不是前缀模糊猜测）：
+    // 86 版 25 个字根键每个都有唯一对应的"键名字"单字（如 "a"->"工"），也就是说
+    // *几乎任何多键词的第 1 个字母* 在刚敲下时都会先命中"唯一候选"这个条件——如果
+    // 沿用拼音那套"唯一候选就自动确认"规则，用户永远打不出任何 2 键以上的词
+    // （敲下第 1 个字母就被自动提交+清空，"aaad" 永远打不到第 2 个 "a"）。拼音场景
+    // 里"唯一候选"是 libpinyin 对已输入内容做完整语境分析后给出的高置信度终态，
+    // 跟五笔"当前长度的精确码表查询恰好只有一条"是两回事，不能套用同一条规则。
+    // 五笔改为：单键字根候选（如 "a"->"工"）需要用户显式确认（空格/数字键，
+    // kWubi 走统一的直选路由，一个空格就够），符合真实五笔输入法的实际使用习惯
+    // （单字根字本来就是按空格确认，不是打完一个键就自动上屏）。
+    if (opts_.scheme != InputScheme::kWubi && candidates_.size() == 1) return SelectCandidate(0);
 
     return BuildViewResult(true);
 }

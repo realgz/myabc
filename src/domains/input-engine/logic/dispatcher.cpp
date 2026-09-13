@@ -20,16 +20,18 @@ std::uint32_t SessionIdOf(const Json& params) {
 }  // namespace
 
 Dispatcher::Dispatcher(LibPinyinEngine& engine, SessionOptions opts, UiBridge* ui_bridge,
-                       ExtensionBridge* extension_bridge)
+                       ExtensionBridge* extension_bridge, std::string scheme_state_path)
     : engine_(engine),
       sessions_(engine, registry_, opts),   // 绑定 registry_ 的引用；内容随后在函数体里填
       ui_bridge_(ui_bridge),
-      autosave_counter_(opts.autosave_every_n_commits) {
+      autosave_counter_(opts.autosave_every_n_commits),
+      scheme_state_path_(std::move(scheme_state_path)) {
     // bihuo_table_ 必须先加载好，registry_ 里的 PinyinCandidateSource 才拿到正确数据；
     // registry_ 是默认空构造的，这里赋值真正内容——sessions_ 持有的是 registry_ 这个
     // 对象的引用（不是内容快照），赋值后 sessions_ 看到的就是新内容。
     if (!opts.bihuo_data_path.empty()) bihuo_table_.LoadFromFile(opts.bihuo_data_path);
-    registry_ = BuildDefaultSourceRegistry(engine, bihuo_table_, opts.bihuo_enabled,
+    if (!opts.wubi_data_path.empty()) wubi_table_.LoadFromFile(opts.wubi_data_path);
+    registry_ = BuildDefaultSourceRegistry(engine, bihuo_table_, opts.bihuo_enabled, wubi_table_,
                                            opts.number_lead_key, extension_bridge);
 }
 
@@ -57,6 +59,8 @@ Response Dispatcher::Handle(const Request& req) {
             return HandleSetCaretRect(req);
         case Method::kSetFieldHint:
             return HandleSetFieldHint(req);
+        case Method::kSetConfig:
+            return HandleSetConfig(req);
         case Method::kUserDictExport:
             return HandleUserDictExport(req);
         case Method::kUserDictImport:
@@ -77,10 +81,14 @@ Response Dispatcher::Handle(const Request& req) {
 }
 
 Response Dispatcher::HandleHello(const Request& req) {
+    // 2026-09-13：附带当前方案，供 TIP 启动/重连时同步语言栏显示状态——TIP 本地不
+    // 持久化方案选择，权威状态始终在引擎侧（含跨引擎重启的持久化，见
+    // scheme_state_store.hpp）。见 docs/decisions/input-engine/20260913-wubi-input-scheme.md。
     return Response::Ok(req.id, Json{
                                     {"engineVersion", kEngineVersion},
                                     {"protocol", ipc::kProtocolVersion},
                                     {"pinyinReady", engine_.ready()},
+                                    {"scheme", InputSchemeToMethodString(sessions_.CurrentScheme())},
                                 });
 }
 
@@ -175,6 +183,40 @@ Response Dispatcher::HandleSetFieldHint(const Request& req) {
     Session& s = sessions_.GetOrCreate(id);
     s.SetFieldHint(req.params.value("hint", std::string()));
     return Response::Ok(req.id, Json::object());
+}
+
+Response Dispatcher::HandleSetConfig(const Request& req) {
+    // DECISION: docs/decisions/input-engine/20260913-wubi-input-scheme.md
+    // 目前只认识 {"input":{"method": "smartabc"|"pinyin"|"wubi"}} 这一个 patch 键，
+    // 其它 setConfig 用法留作后续扩展——缺失/空字符串视为"这次 patch 没有本方法
+    // 认识的键"，不报错，为未来扩展留出空间。
+    const auto it = req.params.find("input");
+    if (it == req.params.end() || !it->is_object()) {
+        return Response::Ok(req.id, Json{{"applied", Json::object()}});
+    }
+    const std::string method = it->value("method", std::string());
+    if (method.empty()) {
+        return Response::Ok(req.id, Json{{"applied", Json::object()}});
+    }
+
+    const auto parsed_scheme = MethodStringToInputScheme(method);
+    if (!parsed_scheme) {
+        return Response::Err(req.id, ipc::errc::kOperationFailed,
+                             "setConfig: unknown input.method: " + method);
+    }
+    const InputScheme scheme = *parsed_scheme;
+
+    const auto affected = sessions_.SetSchemeForAll(scheme);
+    for (const auto affected_id : affected) {
+        // 半成品已在 Session::SetScheme() 里被 ResetToIdle() 丢弃，这里只是照抄
+        // HandleFocusOut 的既有写法通知 UI 隐藏候选窗（composing 已经变 false）。
+        pending_ui_.erase(affected_id);
+        if (ui_bridge_ != nullptr) ui_bridge_->PushHide(affected_id);
+    }
+    // 用户 2026-09-13 拍板要求的持久化（见 scheme_state_store.hpp DECISION）：
+    // 路径为空表示调用方（测试/--selftest）不需要持久化，跳过写盘。
+    if (!scheme_state_path_.empty()) SaveSchemeState(scheme_state_path_, method);
+    return Response::Ok(req.id, Json{{"applied", Json{{"input", Json{{"method", method}}}}}});
 }
 
 Response Dispatcher::HandleUserDictExport(const Request& req) {

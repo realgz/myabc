@@ -13,6 +13,7 @@
 #define MYABC_ENGINE_CANDIDATE_SOURCE_HPP
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -21,6 +22,33 @@
 namespace myabc::engine {
 
 enum class InputMode { kChinese, kEnglish };
+
+// 2026-09-13：输入方案（跟 InputMode 是正交维度，见
+// docs/decisions/input-engine/20260913-wubi-input-scheme.md）。
+// - kSmartAbc：原有默认行为，libpinyin 候选 + 空格两段式确认 + 笔形辅助码/i 数字金额，
+//   一行不改（docs/decisions/input-engine/20260911-space-key-two-step-confirm.md）。
+// - kPlainPinyin：跟 kSmartAbc 用同一个 libpinyin 引擎/候选来源，但按键路由不同——
+//   数字键任何时候直接选字、空格任何时候立即选中候选[0]，不架住。
+// - kWubi：候选来源换成 WubiCandidateSource，按键路由跟 kPlainPinyin 共用同一套
+//   "数字直选、空格直选"逻辑（Session::RouteDigitKeyDirect）。
+enum class InputScheme { kSmartAbc, kPlainPinyin, kWubi };
+
+// 线上/配置文件用的字符串形式（"smartabc"/"pinyin"/"wubi"）<-> InputScheme 互转。
+// 集中放这里，避免 engine_main.cpp / dispatcher.cpp 各自散落一份重复的 if/else
+// 映射表（三处以上重复即应收敛，见 code-quality-standards.md §3.1）。
+inline const char* InputSchemeToMethodString(InputScheme scheme) noexcept {
+    switch (scheme) {
+        case InputScheme::kPlainPinyin: return "pinyin";
+        case InputScheme::kWubi: return "wubi";
+        case InputScheme::kSmartAbc: default: return "smartabc";
+    }
+}
+inline std::optional<InputScheme> MethodStringToInputScheme(const std::string& method) {
+    if (method == "smartabc") return InputScheme::kSmartAbc;
+    if (method == "pinyin") return InputScheme::kPlainPinyin;
+    if (method == "wubi") return InputScheme::kWubi;
+    return std::nullopt;
+}
 
 // 判定 + 产出候选所需的最小上下文。M1 字段够用；M2+ 按需增字段。
 struct InputContext {
@@ -32,6 +60,8 @@ struct InputContext {
     // 自动检测机制——UIA 检测是 TIP 侧未来工作，这里先只搭好"提示怎么流转"这条通路，
     // 见 docs/decisions/input-engine/20260912-extension-candidate-provider.md）。
     std::string field_hint;
+    // 2026-09-13：当前会话使用的输入方案，见 InputScheme 注释。
+    InputScheme scheme = InputScheme::kSmartAbc;
 };
 
 // 与 Session 交互的最小接口：Handles 判定这次输入该不该由自己接管；

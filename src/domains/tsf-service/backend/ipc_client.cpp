@@ -253,7 +253,7 @@ bool IpcClient::CallMethod(ipc::Method method, const ipc::Json& params, ipc::Res
     return Call(req, out) && out.ok;
 }
 
-std::string IpcClient::Hello() {
+std::string IpcClient::Hello(std::string* out_scheme) {
     ipc::Request req;
     req.id = next_id_++;
     req.method = ipc::Method::kHello;
@@ -264,6 +264,9 @@ std::string IpcClient::Hello() {
     };
     ipc::Response resp;
     if (!CallWithTimeout(req, resp, cfg_.connect_timeout_ms) || !resp.ok) return {};
+    if (out_scheme != nullptr) {
+        *out_scheme = resp.result.value("scheme", std::string{});
+    }
     return resp.result.value("engineVersion", std::string{});
 }
 
@@ -307,6 +310,11 @@ bool IpcClient::SetCaretRect(std::uint32_t session_id, int x, int y, int w, int 
     return CallMethod(ipc::Method::kSetCaretRect,
                       ipc::Json{{"sessionId", session_id}, {"x", x}, {"y", y}, {"w", w}, {"h", h}},
                       out);
+}
+
+bool IpcClient::SetInputMethod(const std::string& method, ipc::Response& out) {
+    return CallMethod(ipc::Method::kSetConfig,
+                      ipc::Json{{"input", ipc::Json{{"method", method}}}}, out);
 }
 
 }  // namespace myabc::tsf

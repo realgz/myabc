@@ -45,6 +45,18 @@ else()
     message(STATUS "  (跳过 bihuoma_filter_test：非 MinGW 侧)")
 endif()
 
+# wubi_table_test：五笔编码表查表逻辑，用合成表数据 + §3.2 已验证的真实数据行，
+# 不依赖真实词库文件（依据 docs/plan/08-wubi-input-scheme-plan.md §5.16）。只需
+# engine-core 里的 wubi_table.cpp，跟 bihuoma_filter_test 一样只在 MinGW 侧构建。
+if(MYABC_TOOLCHAIN STREQUAL "mingw" AND TARGET myabc::engine-core)
+    add_executable(wubi_table_test wubi_table_test.cpp)
+    target_link_libraries(wubi_table_test PRIVATE myabc::engine-core)
+    myabc_set_warnings(wubi_table_test)
+    add_test(NAME wubi_table COMMAND wubi_table_test)
+else()
+    message(STATUS "  (跳过 wubi_table_test：非 MinGW 侧)")
+endif()
+
 # learning_policy_test：AutosaveCounter，纯逻辑不依赖 libpinyin，两套工具链都能编
 # （依据 docs/plan/06-m5-user-dict-learning-plan.md §5 M5-5）。只需头文件，不链
 # engine-core（避免不必要的 libpinyin 依赖）。

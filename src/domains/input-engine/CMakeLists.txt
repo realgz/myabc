@@ -25,6 +25,8 @@ add_library(myabc-engine-core STATIC
     logic/candidate/bihuo_filter.cpp
     logic/candidate/extension_candidate_source.cpp
     logic/candidate/source_registry.cpp
+    # wubi_candidate_source.hpp 是纯 header（跟 WubiCandidateSource 一样内联三个虚函数，
+    # 仿照现有风格），不需要单独 .cpp——只有 wubi_table.cpp（下面）是编译单元。
     logic/charset/charset_filter.cpp
     logic/session/session.cpp
     logic/session/session_manager.cpp
@@ -35,6 +37,8 @@ add_library(myabc-engine-core STATIC
     backend/extension_bridge.cpp
     backend/crash_guard.cpp
     backend/bihuoma_table.cpp
+    backend/wubi_table.cpp
+    backend/scheme_state_store.cpp
 )
 add_library(myabc::engine-core ALIAS myabc-engine-core)
 
